@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1240px; font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #F2F8FF; color: #132A54; padding: 36px 40px; }
+  .hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+  .logo { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #356AE6, #5B8DEF); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 22px; }
+  h1 { font-size: 26px; letter-spacing: -0.3px; }
+  .sub { font-size: 14px; color: #5A6B8C; margin-top: 3px; }
+  .tier { font-size: 11px; font-weight: 800; letter-spacing: 1.6px; color: #356AE6; margin: 0 0 10px 2px; }
+  .row { display: flex; gap: 18px; margin-bottom: 0; }
+  .card { background: #fff; border: 1px solid #D8E6F8; border-radius: 14px; padding: 16px 18px; flex: 1; box-shadow: 0 2px 6px rgba(19,42,84,.06); }
+  .card h2 { font-size: 16.5px; margin-bottom: 4px; }
+  .card p { font-size: 12.5px; line-height: 1.5; color: #44557A; }
+  .tag { display: inline-block; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 11px; background: #EAF2FF; color: #2A55B8; border: 1px solid #CFE0FA; border-radius: 6px; padding: 1px 7px; margin: 6px 6px 0 0; }
+  .accent { border-top: 3px solid #356AE6; }
+  .accent.orange { border-top-color: #E8930C; }
+  .accent.green { border-top-color: #1B8A5A; }
+  .arrow { text-align: center; color: #7FA4E8; font-size: 20px; line-height: 1; padding: 10px 0; font-weight: 700; }
+  .pill { font-size: 10.5px; font-weight: 700; letter-spacing: .8px; padding: 2px 9px; border-radius: 999px; margin-left: 8px; vertical-align: 2px; }
+  .pill.live { background: #E1F4EA; color: #16794C; }
+  .pill.mock { background: #FCF0DC; color: #A96A08; }
+  .legend { margin-top: 22px; display: flex; gap: 22px; font-size: 12px; color: #5A6B8C; align-items: center; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <div class="logo">R</div>
+    <div>
+      <h1>ReadSpace — System Architecture</h1>
+      <div class="sub">Two front ends · one Node server · Google Drive as the cloud · data-layer adapter seam</div>
+    </div>
+  </div>
+
+  <div class="tier">CLIENTS</div>
+  <div class="row">
+    <div class="card accent">
+      <h2>🖥️ Web app <span class="tag">/</span></h2>
+      <p>React SPA (Vite). Tabbed VS Code–style reader (MD, PDF, DOCX, HTML+scripts toggle), Explorer sidebar, Saved Links &amp; collections, accounts, transfer review flow, Ice Blue + Light/Dark/Sepia themes, responsive mobile-web layout.</p>
+      <span class="tag">React 18</span><span class="tag">Zustand</span><span class="tag">pdf.js · mammoth</span>
+    </div>
+    <div class="card accent">
+      <h2>📱 Mobile PWA <span class="tag">/m/</span></h2>
+      <p>Local-first React app. Bottom nav (Home · Library · Activity · Settings), offline copies with honest badges, 48dp targets, review-before-transfer, offline upload queue, Drive Changes check, cross-device resume card, installable manifest.</p>
+      <span class="tag">IndexedDB bytes</span><span class="tag">localStorage state</span><span class="tag">manifest + iOS meta</span>
+    </div>
+  </div>
+  <div class="arrow">▼ &nbsp;same origin — one port&nbsp; ▼</div>
+
+  <div class="tier">SERVER</div>
+  <div class="card accent" style="margin-bottom:2px">
+    <h2>⚙️ Node.js server — server/index.mjs</h2>
+    <p>Single process: static host for <b>/</b> (web dist) and <b>/m/</b> (mobile dist, SPA fallback) + all JSON routes.</p>
+    <span class="tag">/api/auth/*</span><span class="tag">/api/drive/*</span><span class="tag">/api/transfers/*</span><span class="tag">/api/workspaces/* — §14</span><span class="tag">/api/drive/changes — M6</span><span class="tag">/mock/google/* (sandbox consent)</span>
+  </div>
+  <div class="arrow">▼</div>
+  <div class="row">
+    <div class="card accent">
+      <h2>🔐 Auth &amp; token security</h2>
+      <p>Google OAuth 2.0 + <b>PKCE</b> (S256). Refresh tokens encrypted at rest <b>AES-256-GCM</b> — server-side only, never sent to any frontend. Cookie sessions; acting user always derived from the verified session.</p>
+      <span class="tag">GOOGLE_CLIENT_ID</span><span class="tag">GOOGLE_CLIENT_SECRET</span><span class="tag">TOKEN_ENCRYPTION_KEY</span>
+    </div>
+    <div class="card accent orange">
+      <h2>☁️ Drive adapter <span class="pill live">real</span><span class="pill mock">sandbox</span></h2>
+      <p>Creds set → real Drive v3 (<span style="font-family:monospace">files.list/get/upload, changes</span>). Creds unset → identical-shape built-in mock with sample files &amp; per-user change log — full flow works offline.</p>
+      <span class="tag">google.mjs</span><span class="tag">mockdrive.mjs</span>
+    </div>
+  </div>
+  <div class="arrow">▼</div>
+
+  <div class="tier">STORAGE</div>
+  <div class="row">
+    <div class="card accent green">
+      <h2>🗂️ Metadata store (adapter seam)</h2>
+      <p>Default: JSON file store (<span style="font-family:monospace">data/readspace-db.json</span>) — users, workspaces, saved links, transfer logs. Set <span style="font-family:monospace">MONGODB_URI</span> → MongoDB/Atlas with the same MongoDB-shaped documents.</p>
+      <span class="tag">db.mjs seam</span><span class="tag">MONGODB_URI</span>
+    </div>
+    <div class="card accent green">
+      <h2>📄 File contents — where they belong</h2>
+      <p>ReadSpace stores <b>references and metadata only</b>. Document bytes stay in the user's Google Drive (or on the local device); every Drive read/upload runs server-side with the user's own authorized token.</p>
+      <span class="tag">Drive API</span><span class="tag">local device copies</span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#356AE6"></span>app surfaces</span>
+    <span><span class="dot" style="background:#E8930C"></span>adapter (real ⇄ sandbox)</span>
+    <span><span class="dot" style="background:#1B8A5A"></span>storage / external cloud</span>
+    <span style="margin-left:auto">env vars in <b style="font-family:monospace">.env</b> — see .env.example</span>
+  </div>
+</body>
+</html>

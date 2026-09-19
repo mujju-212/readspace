@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1240px; font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #F2F8FF; color: #132A54; padding: 36px 40px; }
+  .hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+  .logo { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #356AE6, #5B8DEF); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 22px; }
+  h1 { font-size: 25px; letter-spacing: -0.3px; }
+  .sub { font-size: 14px; color: #5A6B8C; margin-top: 3px; }
+  .panel { background: #fff; border: 1px solid #D8E6F8; border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(19,42,84,.06); margin-bottom: 20px; }
+  .panel > h2 { font-size: 15px; font-weight: 800; letter-spacing: 1.2px; margin-bottom: 14px; }
+  .flow { display: flex; align-items: stretch; gap: 0; }
+  .node { flex: 1; background: #F7FAFF; border: 1px solid #DCE9FB; border-radius: 12px; padding: 12px 14px; }
+  .node h3 { font-size: 13.5px; margin-bottom: 3px; }
+  .node p { font-size: 11.5px; line-height: 1.45; color: #44557A; }
+  .node code { font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; background: #EAF2FF; border: 1px solid #CFE0FA; border-radius: 4px; padding: 0 4px; color: #2A55B8; }
+  .node.dev { border-top: 3px solid #356AE6; }
+  .node.srv { border-top: 3px solid #7A5AE0; }
+  .node.ok { border-top: 3px solid #1B8A5A; }
+  .node.warn { border-top: 3px solid #E8930C; background: #FFF9F0; }
+  .arr { flex: 0 0 34px; display: flex; align-items: center; justify-content: center; color: #7FA4E8; font-weight: 800; font-size: 17px; }
+  .badge { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .8px; padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 1px; }
+  .badge.off { background: #FCF0DC; color: #A96A08; }
+  .badge.done { background: #E1F4EA; color: #16794C; }
+  .note { margin-top: 12px; font-size: 11.5px; color: #5A6B8C; line-height: 1.5; border-top: 1px dashed #E3EDFB; padding-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <div class="logo">R</div>
+    <div>
+      <h1>Mobile app — cloud session sync (M5) &amp; offline transfer queue (M6)</h1>
+      <div class="sub">Local-first by default; the account is used for resume-anywhere and background uploads</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 style="color:#2A55B8">M5 · CROSS-DEVICE SESSION SYNC — “Continue from your account”</h2>
+    <div class="flow">
+      <div class="node dev"><h3>📱 Device A — read</h3><p>Open a file (local or Drive). After <code>1.5 s</code> debounce, <code>syncSession()</code> saves the reading session.</p></div>
+      <div class="arr">→</div>
+      <div class="node srv"><h3>Server — account workspace</h3><p><code>POST /api/workspaces/sync</code> <code>{ key:"mobile-reader" }</code> — last 5 tabs, <code>resourceKey: drive:&lt;fileId&gt;</code>, scroll position (PDF page rides in <code>scrollTop</code>).</p></div>
+      <div class="arr">→</div>
+      <div class="node srv"><h3>Stored with the account</h3><p>Per-user MongoDB-shaped record (<code>§14 /api/workspaces</code>), <code>lastOpenedAt</code> stamped.</p></div>
+      <div class="arr">→</div>
+      <div class="node dev"><h3>📱 Device B — sign in</h3><p><code>GET /api/workspaces</code> → account session <b>newer</b> than device history? → Home shows the <b>“Continue from your account”</b> card.</p></div>
+      <div class="arr">→</div>
+      <div class="node ok"><h3>✅ Resume anywhere</h3><p><code>openCloudTemp()</code> streams the file server-side → reader opens at the saved page/scroll. MOB-12 verified end-to-end.</p></div>
+    </div>
+    <div class="note">The device stays fully usable with no account — signing in is optional (no login gate). Sync only stores references + positions, never file bytes.</div>
+  </div>
+
+  <div class="panel">
+    <h2 style="color:#A96A08">M6 · OFFLINE UPLOAD QUEUE — honest states, auto-resume on reconnect</h2>
+    <div class="flow">
+      <div class="node dev"><h3>📱 Pick files → Review</h3><p>Library → select → destination → <b>Review upload</b>. The review always states: existing Drive files are never overwritten.</p></div>
+      <div class="arr">→</div>
+      <div class="node warn"><h3>Offline? Queue it <span class="badge off">OFFLINE</span></h3><p>Confirm button becomes <b>“Queue N file(s) for when online”</b> — job lands in Activity with an honest Offline badge, never claimed as done.</p></div>
+      <div class="arr">→</div>
+      <div class="node dev"><h3>Read locally meanwhile</h3><p>Offline banner: “Drive transfers pause; local reading stays available.” Files stay readable from the offline copy.</p></div>
+      <div class="arr">→</div>
+      <div class="node srv"><h3>Reconnect → auto-start</h3><p>The <code>online</code> event re-runs queued <code>uploadToDrive</code> jobs (<code>resumeQueued</code>), then re-syncs the session.</p></div>
+      <div class="arr">→</div>
+      <div class="node ok"><h3>✅ Completed <span class="badge done">COMPLETED</span></h3><p>Badge flips to Completed; the file is really on Drive (verified by smoke). Retry-failed stays available for real errors.</p></div>
+    </div>
+    <div class="note">Background-transfer scope on the web runtime: jobs keep running across screen switches and auto-start on reconnect; there is no OS-level background daemon in a PWA — this is the honest PRD §8 behavior.</div>
+  </div>
+
+  <div class="panel">
+    <h2 style="color:#16794C">M6 · DRIVE CHANGES CHECK — “what changed since my last check?”</h2>
+    <div class="flow">
+      <div class="node dev"><h3>⇅ Changes button</h3><p>Drive tab header. Stores its page token locally (<code>rsm.changesToken</code>).</p></div>
+      <div class="arr">→</div>
+      <div class="node srv"><h3>Changes API</h3><p><code>GET /api/drive/changes?pageToken=…</code> → real <code>changes.list</code>, or the mock per-user change log in sandbox.</p></div>
+      <div class="arr">→</div>
+      <div class="node ok"><h3>✅ Honest note</h3><p>“N file(s) changed since your last check — latest: X.” or “No changes since your last check.” New token stored for next time.</p></div>
+    </div>
+  </div>
+</body>
+</html>

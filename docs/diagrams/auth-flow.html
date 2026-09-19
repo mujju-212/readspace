@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1240px; font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #F2F8FF; color: #132A54; padding: 36px 40px; }
+  .hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+  .logo { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #356AE6, #5B8DEF); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 22px; }
+  h1 { font-size: 25px; letter-spacing: -0.3px; }
+  .sub { font-size: 14px; color: #5A6B8C; margin-top: 3px; }
+  .lanes { display: flex; gap: 18px; }
+  .lane { flex: 1; background: #fff; border: 1px solid #D8E6F8; border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(19,42,84,.06); }
+  .lane > h2 { font-size: 15px; letter-spacing: 1.2px; font-weight: 800; margin-bottom: 14px; }
+  .lane.real > h2 { color: #16794C; }
+  .lane.mock > h2 { color: #A96A08; }
+  .step { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px dashed #E3EDFB; }
+  .step:last-child { border-bottom: none; }
+  .n { flex: 0 0 26px; height: 26px; border-radius: 8px; background: #EAF2FF; color: #2A55B8; font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; border: 1px solid #CFE0FA; }
+  .step b { font-size: 13.5px; }
+  .step p { font-size: 12px; color: #44557A; line-height: 1.45; margin-top: 1px; }
+  code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 11px; background: #F0F6FF; border: 1px solid #DCE9FB; border-radius: 5px; padding: 0 5px; color: #2A55B8; }
+  .banner { margin-top: 18px; background: #10233F; color: #DCE9FB; border-radius: 14px; padding: 16px 20px; font-size: 13px; line-height: 1.6; }
+  .banner b { color: #fff; }
+  .banner code { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.2); color: #BBD4FF; font-size: 11.5px; }
+  .shared { margin-top: 16px; padding: 12px 16px; background: #EAF2FF; border: 1px solid #CFE0FA; border-radius: 12px; font-size: 12.5px; color: #2A55B8; line-height: 1.55; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <div class="logo">R</div>
+    <div>
+      <h1>Google Drive connection — OAuth 2.0 + PKCE &amp; token security</h1>
+      <div class="sub">Same route shapes in both modes: real Google when credentials are set, built-in sandbox when not</div>
+    </div>
+  </div>
+
+  <div class="lanes">
+    <div class="lane real">
+      <h2>REAL MODE — GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET set</h2>
+      <div class="step"><div class="n">1</div><div><b>App checks mode</b><p><code>GET /api/config</code> → <code>mode: "google"</code>; Settings shows “Connect Google Drive”.</p></div></div>
+      <div class="step"><div class="n">2</div><div><b>Start authorization</b><p><code>GET /api/auth/google/start?drive=1&amp;returnTo=…</code> — server generates <b>PKCE</b> <code>code_verifier</code> + S256 <code>code_challenge</code>, <code>state</code> and a secret-binding cookie.</p></div></div>
+      <div class="step"><div class="n">3</div><div><b>User consents at Google</b><p>Google account chooser &amp; Drive scope consent (openid, email, profile, drive).</p></div></div>
+      <div class="step"><div class="n">4</div><div><b>Redirect back</b><p><code>GET /api/auth/google/callback?code&amp;state</code> — <code>state</code> + verifier cookie verified server-side.</p></div></div>
+      <div class="step"><div class="n">5</div><div><b>Code exchange</b><p>Server POSTs <code>code</code> + <code>client_id</code> + <code>client_secret</code> + <code>code_verifier</code> → access + refresh tokens.</p></div></div>
+      <div class="step"><div class="n">6</div><div><b>Identity + persistence</b><p>User verified from ID token; identity stored <b>separately</b> from the Drive authorization.</p></div></div>
+    </div>
+    <div class="lane mock">
+      <h2>SANDBOX MODE — credentials unset (default)</h2>
+      <div class="step"><div class="n">1</div><div><b>App checks mode</b><p><code>GET /api/config</code> → <code>mode: "sandbox"</code>; UI identical, badge says sandbox.</p></div></div>
+      <div class="step"><div class="n">2</div><div><b>Start authorization</b><p>Same <code>/api/auth/google/start</code> — returns the in-app consent page instead of Google.</p></div></div>
+      <div class="step"><div class="n">3</div><div><b>Mock consent form</b><p><code>/mock/google/consent</code> — demo.user@gmail.com, “Allow” grants the same scopes against a mock Drive.</p></div></div>
+      <div class="step"><div class="n">4</div><div><b>Redirect back</b><p><code>returnTo</code> with <code>?signedin=1</code>; same state checks as real mode.</p></div></div>
+      <div class="step"><div class="n">5</div><div><b>Code exchange</b><p>Mock tokens — identical token shapes, so the rest of the app can’t tell the difference.</p></div></div>
+      <div class="step"><div class="n">6</div><div><b>Identity + persistence</b><p>Fixed demo identity; seeded mock Drive (Papers, Study Notes, …) + per-user change log.</p></div></div>
+    </div>
+  </div>
+
+  <div class="shared"><b>Both modes, steps 7–8:</b>&nbsp; 7 — the refresh token is encrypted <b>AES-256-GCM</b> (<code>v1:base64(iv|tag|ct)</code>, key from <code>TOKEN_ENCRYPTION_KEY</code>) and stored <b>server-side only</b>. &nbsp;8 — a session cookie is issued; the frontend can only ever see <code>GET /api/auth/me</code> → <code>{ email, name }</code>.</div>
+
+  <div class="banner">
+    <b>Token security guarantees (PRD §13):</b> refresh tokens and client secrets never leave the server · every Drive read/upload runs server-side with the acting user’s own decrypted token (user derived from the verified session, never from the request body) · revoking the app in Google immediately breaks server calls and the UI reports honest “needs re-connect” state · rotating <code>TOKEN_ENCRYPTION_KEY</code> invalidates old ciphertexts (versioned <code>v1:</code> format).
+  </div>
+</body>
+</html>
