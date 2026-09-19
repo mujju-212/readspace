@@ -1,0 +1,18 @@
+READING LIST — Semester 6
+=========================
+
+Core (finish before mid-terms)
+  1. CLRS ch. 10-12 (hash tables, BSTs)
+  2. "Designing Data-Intensive Applications" — ch. 3 (storage)
+  3. Python docs: data structures tutorial
+
+Papers
+  - MapReduce (Dean & Ghemawat, 2004)
+  - The Google File System (2003)
+  - Dynamo (2007) — skim section 4
+
+Side reading
+  - The Pragmatic Programmer — tip sections only
+  - MDN: Understanding Flexbox
+
+DONE:  [x] GFS   [x] MapReduce   [ ] Dynamo   [ ] DDIA ch.3

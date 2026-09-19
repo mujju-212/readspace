@@ -1,0 +1,87 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 857 >>
+stream
+BT /F1 20 Tf 72 700.0 Td (ReadSpace -- PDF Viewer Demo) Tj ET
+0.4 w 72 692.0 m 540 692.0 l S
+BT /F2 11.5 Tf 72 666.0 Td (This three-page document exists to exercise the ReadSpace PDF viewer.) Tj ET
+BT /F2 11.5 Tf 72 637.1 Td (Things to try with this file open:) Tj ET
+BT /F2 11.5 Tf 72 620.1 Td (1. Scroll continuously -- pages render lazily as they approach view.) Tj ET
+BT /F2 11.5 Tf 72 603.1 Td (2. Use the zoom controls; 'Fit width' is the default.) Tj ET
+BT /F2 11.5 Tf 72 586.1 Td (3. Jump pages with the arrows in the toolbar.) Tj ET
+BT /F2 11.5 Tf 72 569.1 Td (4. Select this text with the mouse -- the pdf.js text layer is active.) Tj ET
+BT /F2 11.5 Tf 72 540.2 Td (The viewer runs pdf.js in a Web Worker, so the UI stays responsive even) Tj ET
+BT /F2 11.5 Tf 72 523.2 Td (for large documents. Pages are rendered at your device pixel ratio.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 826 >>
+stream
+BT /F1 20 Tf 72 700.0 Td (Page 2 -- Typography) Tj ET
+0.4 w 72 692.0 m 540 692.0 l S
+BT /F2 11.5 Tf 72 666.0 Td (PDF rendering happens on <canvas>, so what you see is exactly what a) Tj ET
+BT /F2 11.5 Tf 72 649.0 Td (print shop would see: embedded fonts, vector shapes and images all) Tj ET
+BT /F2 11.5 Tf 72 632.0 Td (drawn by the browser at full fidelity.) Tj ET
+BT /F2 11.5 Tf 72 603.1 Td (Readable software should stay out of your way. That is the design brief) Tj ET
+BT /F2 11.5 Tf 72 586.1 Td (for ReadSpace: low chrome, calm colors, and typography you can tune -) Tj ET
+BT /F2 11.5 Tf 72 569.1 Td (font family, size, line height and reading width - from the settings) Tj ET
+BT /F2 11.5 Tf 72 552.1 Td (menu in the title bar.) Tj ET
+BT /F2 11.5 Tf 72 523.2 Td (Reading is the product; everything else is plumbing.) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 848 >>
+stream
+BT /F1 20 Tf 72 700.0 Td (Page 3 -- Session Notes) Tj ET
+0.4 w 72 692.0 m 540 692.0 l S
+BT /F2 11.5 Tf 72 666.0 Td (Checklist for the v0.1 milestone:) Tj ET
+BT /F2 11.5 Tf 72 649.0 Td ([x] Open a folder and browse its file tree) Tj ET
+BT /F2 11.5 Tf 72 632.0 Td ([x] Tabs: preview tabs, pinning, reorder, unsaved indicator) Tj ET
+BT /F2 11.5 Tf 72 615.0 Td ([x] Viewers: Markdown, PDF, DOCX, HTML, TXT, images) Tj ET
+BT /F2 11.5 Tf 72 598.0 Td ([x] Preview / Edit toggle with save back to disk) Tj ET
+BT /F2 11.5 Tf 72 581.0 Td ([x] Resizable sidebar and independent content scrolling) Tj ET
+BT /F2 11.5 Tf 72 564.0 Td ([x] Light / dark / sepia themes with session restore) Tj ET
+BT /F2 11.5 Tf 72 535.1 Td (Next up: outline panel, find-in-document, split view and global search.) Tj ET
+BT /F2 11.5 Tf 72 506.2 Td (- ReadSpace team, Oct 2026) Tj ET
+endstream
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000133 00000 n 
+0000000208 00000 n 
+0000000278 00000 n 
+0000000414 00000 n 
+0000001322 00000 n 
+0000001458 00000 n 
+0000002335 00000 n 
+0000002472 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R >>
+startxref
+3372
+%%EOF

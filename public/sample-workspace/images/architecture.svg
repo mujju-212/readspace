@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" font-family="Segoe UI, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#557"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="640" height="300" fill="#f7f9fc"/>
+  <text x="320" y="34" text-anchor="middle" font-size="17" font-weight="600" fill="#223">Library Management System — Three-Tier Architecture</text>
+
+  <rect x="40" y="70" width="150" height="120" rx="10" fill="#dbe9fb" stroke="#0969da" stroke-width="1.6"/>
+  <text x="115" y="98" text-anchor="middle" font-size="14" font-weight="600" fill="#0a4f9e">Client</text>
+  <text x="115" y="120" text-anchor="middle" font-size="11" fill="#334">React SPA</text>
+  <text x="115" y="137" text-anchor="middle" font-size="11" fill="#334">browser</text>
+
+  <rect x="245" y="70" width="150" height="120" rx="10" fill="#e5f4e8" stroke="#2ea86e" stroke-width="1.6"/>
+  <text x="320" y="98" text-anchor="middle" font-size="14" font-weight="600" fill="#1c7a4e">API Server</text>
+  <text x="320" y="120" text-anchor="middle" font-size="11" fill="#334">FastAPI · REST</text>
+  <text x="320" y="137" text-anchor="middle" font-size="11" fill="#334">auth + validation</text>
+
+  <rect x="450" y="70" width="150" height="120" rx="10" fill="#fdeaea" stroke="#e5534b" stroke-width="1.6"/>
+  <text x="525" y="98" text-anchor="middle" font-size="14" font-weight="600" fill="#b03028">Database</text>
+  <text x="525" y="120" text-anchor="middle" font-size="11" fill="#334">PostgreSQL</text>
+  <text x="525" y="137" text-anchor="middle" font-size="11" fill="#334">books · users · loans</text>
+
+  <line x1="190" y1="130" x2="245" y2="130" stroke="#557" stroke-width="1.6" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <line x1="395" y1="130" x2="450" y2="130" stroke="#557" stroke-width="1.6" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="217" y="118" text-anchor="middle" font-size="10.5" fill="#556">HTTPS/JSON</text>
+  <text x="422" y="118" text-anchor="middle" font-size="10.5" fill="#556">SQL</text>
+
+  <text x="320" y="245" text-anchor="middle" font-size="11.5" fill="#556">Figure 1 — every client request is authenticated at the API tier; the DB is never exposed.</text>
+</svg>

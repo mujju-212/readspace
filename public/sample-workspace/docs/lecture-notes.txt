@@ -1,0 +1,22 @@
+LECTURE NOTES — DBMS, Unit 3 (Normalization)
+Date: 09 Oct 2026
+
+Definitions:
+- 1NF: every attribute holds atomic values only (no repeating groups).
+- 2NF: 1NF + no partial dependency (non-key attr depends on the WHOLE key).
+- 3NF: 2NF + no transitive dependency (non-key -> non-key).
+- BCNF: every determinant is a candidate key.
+
+Example we worked through:
+  R(student_id, course, prof_name, prof_phone)
+  -> prof_name depends only on course, not the full key  => not 3NF
+  Split: R1(student_id, course), R2(course, prof_name), R3(prof_name, prof_phone)
+
+Exam tips:
+ 1. They usually ask to normalize a 5-6 column table to 3NF. Write FDs FIRST.
+ 2. Lossless join decomposition — mention it explicitly.
+ 3. Trap: partial vs transitive dependency — check the key composition.
+
+Doubts to ask:
+ - Is BCNF always lossless? (yes join, but may lose dependencies)
+ - Multivalued dependencies -> 4NF (next class)

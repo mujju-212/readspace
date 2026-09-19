@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project Report — Library Management System</title>
+<style>
+  body { font-family: Georgia, 'Times New Roman', serif; color: #2b2b2b; max-width: 760px; margin: 40px auto; padding: 0 24px; line-height: 1.65; }
+  h1 { font-size: 1.9em; border-bottom: 3px solid #0969da; padding-bottom: 8px; }
+  h2 { font-size: 1.3em; margin-top: 1.6em; color: #0a4f9e; }
+  .meta { color: #666; font-style: italic; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #bbb; padding: 7px 12px; text-align: left; }
+  th { background: #eef3f9; }
+  figure { margin: 1.4em 0; text-align: center; }
+  figcaption { font-size: 0.85em; color: #666; margin-top: 6px; }
+  code { background: #f2f2f2; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <h1>Library Management System</h1>
+  <p class="meta">Mini-project report · Semester 5 · submitted October 2026</p>
+
+  <h2>1. Objective</h2>
+  <p>
+    Build a two-tier system that tracks book issues and returns for the college
+    library, replacing the register-based process. The backend exposes a REST
+    API; the frontend is a single-page app.
+  </p>
+
+  <h2>2. Architecture</h2>
+  <figure>
+    <img src="../images/architecture.svg" alt="Three-tier architecture diagram" width="520">
+    <figcaption>Figure 1 — three-tier architecture: SPA, REST API, database.</figcaption>
+  </figure>
+  <p>
+    The client never talks to the database directly; every request passes
+    through the API layer where authentication and validation happen.
+  </p>
+
+  <h2>3. Modules</h2>
+  <table>
+    <tr><th>Module</th><th>Responsibility</th><th>Status</th></tr>
+    <tr><td><code>auth</code></td><td>JWT login, role checks (student / librarian)</td><td>done</td></tr>
+    <tr><td><code>catalog</code></td><td>Search, filter, add/remove titles</td><td>done</td></tr>
+    <tr><td><code>circulation</code></td><td>Issue, return, renew, fines</td><td>in progress</td></tr>
+    <tr><td><code>reports</code></td><td>Monthly issue statistics</td><td>planned</td></tr>
+  </table>
+
+  <h2>4. Notes</h2>
+  <p>
+    This page is a self-contained HTML file rendered inside ReadSpace's
+    <strong>sandboxed iframe</strong> — scripts are disabled by default (toggle
+    <em>Scripts on</em> in the toolbar to run the line below) and the relative
+    image above is resolved from the same folder, exactly like it would be on disk.
+  </p>
+  <p id="js-status"><noscript>JavaScript: blocked (noscript)</noscript></p>
+  <script>
+    document.getElementById('js-status').textContent =
+      'JavaScript: executed ✓ (this page ran inside the sandbox)';
+  </script>
+</body>
+</html>
