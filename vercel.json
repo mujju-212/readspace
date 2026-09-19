@@ -1,0 +1,18 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.mjs"
+    },
+    {
+      "source": "/mock/(.*)",
+      "destination": "/api/index.mjs"
+    },
+    {
+      "source": "/((?!api/|mock/|assets/|sample-workspace/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
