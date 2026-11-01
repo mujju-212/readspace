@@ -34,6 +34,27 @@ Click **Open Folder** in the top bar. On Chrome and Edge you get full read/write
 access and ReadSpace restores your last folder automatically on the next visit.
 Other browsers open folders in a read-only snapshot mode.
 
+## Diagrams & SVG
+
+SVG images referenced from Markdown render inline:
+
+![ReadSpace architecture](images/architecture.svg)
+
+And raw inline SVG blocks work too (diagrams pasted from draw.io / Excalidraw
+included):
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 90" font-family="Segoe UI, sans-serif">
+  <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 z" fill="#64748b"/></marker></defs>
+  <rect x="4" y="4" width="110" height="82" rx="10" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="59" y="48" text-anchor="middle" font-size="13" fill="#1e40af">Browser</text>
+  <path d="M118 45 h40" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="162" y="4" width="110" height="82" rx="10" fill="#dcfce7" stroke="#86efac"/>
+  <text x="217" y="48" text-anchor="middle" font-size="13" fill="#166534">ReadSpace</text>
+  <path d="M276 45 h40" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="320" y="4" width="110" height="82" rx="10" fill="#fef3c7" stroke="#fcd34d"/>
+  <text x="375" y="48" text-anchor="middle" font-size="13" fill="#92400e">Your files</text>
+</svg>
+
 ---
 
 *ReadSpace v0.1 — built with React, pdf.js, mammoth.js, CodeMirror 6 and marked.*

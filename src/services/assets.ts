@@ -2,7 +2,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
 import type { FileSystemProvider } from './fs/types';
-import { basename, dirname } from './fs/types';
+import { basename, dirname, extOf } from './fs/types';
 
 /* ---------- generic helpers ---------- */
 
@@ -39,6 +39,18 @@ export function mimeForExt(ext: string): string {
   return MIME[ext.toLowerCase()] ?? 'application/octet-stream';
 }
 
+/** MIME for a referenced asset, robust to query strings / fragments
+ * (`diagram.svg?raw=true` used to resolve to octet-stream, which browsers
+ * refuse to render as SVG inside <img>). Falls back to sniffing the bytes. */
+export function mimeForRef(ref: string, buf?: ArrayBuffer): string {
+  const clean = ref.split(/[?#]/)[0];
+  const mime = mimeForExt(extOf(clean));
+  if (mime !== 'application/octet-stream' || !buf) return mime;
+  const head = new TextDecoder().decode(new Uint8Array(buf).slice(0, 512)).trimStart().toLowerCase();
+  if (head.startsWith('<svg') || (head.startsWith('<?xml') && head.includes('<svg'))) return 'image/svg+xml';
+  return mime;
+}
+
 export function downloadText(name: string, text: string): void {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
@@ -58,37 +70,102 @@ marked.use({ gfm: true, breaks: false });
 
 export interface RenderedMarkdown { html: string; blobUrls: string[] }
 
+/**
+ * Sanitizer config that keeps inline SVG actually renderable — draw.io /
+ * Excalidraw diagrams (<foreignObject> with HTML labels), sprite <use>
+ * references — while scripts, event handlers and javascript: URLs are still
+ * stripped (verified: onclick/onload/onerror, <script>, <iframe> inside
+ * foreignObject and javascript: hrefs are all removed).
+ */
+const MD_SANITIZE: Parameters<typeof DOMPurify.sanitize>[1] = {
+  ADD_TAGS: ['use', 'foreignObject'],
+  ADD_ATTR: ['target', 'id', 'xlink:href'],
+  // let sanitized HTML live inside SVG <foreignObject>/<desc>/<title>
+  // (DOMPurify 3.x no longer treats foreignObject as an integration point
+  // unless it is listed here — keys must be lowercase)
+  HTML_INTEGRATION_POINTS: { 'annotation-xml': true, foreignobject: true, desc: true, title: true },
+};
+
 export async function renderMarkdown(
   text: string,
   path: string,
   provider: FileSystemProvider,
 ): Promise<RenderedMarkdown> {
   const raw = await marked.parse(text);
-  const clean = DOMPurify.sanitize(raw, { ADD_ATTR: ['target', 'id'] });
+
+  // <embed>/<object> are always stripped by the sanitizer — rewrite SVG ones
+  // to <img> first so they go through the normal workspace-asset resolution
+  let dirty = raw;
+  const pre = new DOMParser().parseFromString(raw, 'text/html');
+  const embeds = Array.from(pre.querySelectorAll('embed[src], object[data]'));
+  if (embeds.length) {
+    for (const el of embeds) {
+      const src = el.getAttribute('src') ?? el.getAttribute('data') ?? '';
+      const type = (el.getAttribute('type') ?? '').toLowerCase();
+      const looksSvg = type.includes('svg') || (!type && /\.svg($|[?#])/i.test(src));
+      if (!src || !looksSvg) continue;
+      const img = pre.createElement('img');
+      img.setAttribute('src', src);
+      img.setAttribute('alt', el.getAttribute('aria-label') ?? el.getAttribute('title') ?? 'svg diagram');
+      el.replaceWith(img);
+    }
+    dirty = pre.body.innerHTML;
+  }
+
+  const clean = DOMPurify.sanitize(dirty, MD_SANITIZE);
 
   const doc = new DOMParser().parseFromString(clean, 'text/html');
   const blobUrls: string[] = [];
 
-  // resolve relative images through the workspace provider
-  const imgs = Array.from(doc.querySelectorAll('img'));
-  await Promise.all(
-    imgs.map(async (img) => {
-      const src = img.getAttribute('src') ?? '';
-      if (!src || /^(https?:|data:|blob:)/i.test(src)) return;
-      try {
-        const p = resolveRel(path, decodeURI(src));
-        const buf = await provider.readFile(p);
-        const url = URL.createObjectURL(new Blob([buf], { type: mimeForExt(src.split('.').pop() ?? '') }));
-        blobUrls.push(url);
-        img.setAttribute('src', url);
-      } catch {
-        const fig = doc.createElement('span');
-        fig.className = 'md-img-missing';
-        fig.textContent = `⚠ image not found: ${src}`;
-        img.replaceWith(fig);
-      }
-    }),
-  );
+  // resolve relative assets (md <img>, raw <img>, and <image> inside inline
+  // SVG) through the workspace provider into blob: URLs
+  const resolveAsset = async (el: Element, attr: string, onMissing: (() => void) | null) => {
+    const src = el.getAttribute(attr) ?? '';
+    if (!src || src.startsWith('#') || /^(https?:|data:|blob:)/i.test(src)) return;
+    try {
+      const p = resolveRel(path, decodeURI(src));
+      const buf = await provider.readFile(p);
+      const url = URL.createObjectURL(new Blob([buf], { type: mimeForRef(src, buf) }));
+      blobUrls.push(url);
+      el.setAttribute(attr, url);
+    } catch {
+      if (onMissing) onMissing();
+    }
+  };
+
+  const jobs: Promise<void>[] = [];
+  doc.querySelectorAll('img').forEach((img) => {
+    jobs.push(resolveAsset(img, 'src', () => {
+      const fig = doc.createElement('span');
+      fig.className = 'md-img-missing';
+      fig.textContent = `⚠ image not found: ${img.getAttribute('src') ?? ''}`;
+      img.replaceWith(fig);
+    }));
+  });
+  // <image href="..."> / <image xlink:href="..."> inside inline SVG
+  doc.querySelectorAll('svg image').forEach((im) => {
+    const attr = im.getAttribute('href') ? 'href' : im.getAttribute('xlink:href') ? 'xlink:href' : null;
+    if (attr) jobs.push(resolveAsset(im, attr, null));
+  });
+  await Promise.all(jobs);
+
+  // <use> may only reference in-document fragments — drop anything that
+  // would make the browser fetch an external resource
+  doc.querySelectorAll('use').forEach((u) => {
+    for (const attr of ['href', 'xlink:href']) {
+      const v = u.getAttribute(attr);
+      if (v && !v.startsWith('#')) u.removeAttribute(attr);
+    }
+  });
+
+  // inline SVG without explicit dimensions but with a viewBox: scale to the
+  // reading column instead of the 300×150 default (icons keep their size —
+  // they carry explicit width/height)
+  doc.querySelectorAll('svg').forEach((s) => {
+    if (!s.getAttribute('width') && !s.getAttribute('height') && s.getAttribute('viewBox')) {
+      s.setAttribute('width', '100%');
+    }
+  });
 
   // safe links open in a new tab; internal anchors stay
   doc.querySelectorAll('a[href]').forEach((a) => {
@@ -148,7 +225,7 @@ export async function buildSandboxedHtml(
     try {
       const p = resolveRel(path, decodeURI(val));
       const buf = await provider.readFile(p);
-      el.setAttribute(attr, toDataUrl(buf, mimeForExt(val.split('.').pop() ?? '')));
+      el.setAttribute(attr, toDataUrl(buf, mimeForRef(val, buf)));
     } catch { /* leave broken ref */ }
   };
 
