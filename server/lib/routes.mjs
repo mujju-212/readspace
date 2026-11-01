@@ -259,16 +259,20 @@ export async function handleApi(req, res, pathname) {
         targetUrl = `${baseUrl(req)}${back}${sep}signedin=1${pending.withDrive ? '&drive=1' : ''}&token=${sid}`;
       }
 
-      const htmlBridge = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Signing In...</title></head><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f172a;color:#f8fafc"><div style="text-align:center;padding:24px"><p style="font-size:16px;font-weight:600;margin-bottom:8px">Signing in to ReadSpace...</p><p style="font-size:13px;color:#94a3b8">Redirecting you back to the application...</p></div><script>
+      const htmlBridge = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing In...</title></head><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f172a;color:#f8fafc;padding:20px;box-sizing:border-box"><div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px 24px;text-align:center;max-width:400px;width:100%"><div style="font-size:36px;margin-bottom:12px">✨</div><p style="font-size:18px;font-weight:700;margin-bottom:8px">Signed in successfully!</p><p style="font-size:14px;color:#94a3b8;margin-bottom:20px">Redirecting to ReadSpace...</p><a id="actionBtn" href="${targetUrl}" style="display:inline-block;width:100%;padding:12px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;box-sizing:border-box">Return to ReadSpace App</a></div><script>
 try {
   if (window.opener && window.opener !== window) {
     window.opener.postMessage({ type: 'rs_auth_complete', token: ${JSON.stringify(sid)}, drive: ${isDriveConnected}, driveConnected: ${isDriveConnected}, user: ${JSON.stringify(publicUser(user))} }, '*');
     setTimeout(() => { window.close(); }, 350);
   } else {
-    window.location.replace(${JSON.stringify(targetUrl)});
+    window.location.href = ${JSON.stringify(targetUrl)};
+    setTimeout(() => {
+      var btn = document.getElementById('actionBtn');
+      if (btn) btn.click();
+    }, 150);
   }
 } catch(e) {
-  window.location.replace(${JSON.stringify(targetUrl)});
+  window.location.href = ${JSON.stringify(targetUrl)};
 }
 </script></body></html>`;
 
