@@ -21,6 +21,11 @@ export function httpError(code, message, codeName = 'error') {
 const MAX_BODY = 64 * 1024 * 1024; // 64 MB safety cap
 
 export function readBody(req, limit = MAX_BODY) {
+  if (req.body !== undefined) {
+    if (Buffer.isBuffer(req.body)) return Promise.resolve(req.body);
+    if (typeof req.body === 'string') return Promise.resolve(Buffer.from(req.body));
+    if (typeof req.body === 'object') return Promise.resolve(Buffer.from(JSON.stringify(req.body)));
+  }
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -39,6 +44,18 @@ export function readBody(req, limit = MAX_BODY) {
 }
 
 export async function readJson(req, limit = 2 * 1024 * 1024) {
+  if (req.body !== undefined) {
+    if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      return req.body;
+    }
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body);
+      } catch {
+        throw httpError(400, 'Invalid JSON body', 'bad_json');
+      }
+    }
+  }
   const buf = await readBody(req, limit);
   if (buf.length === 0) return {};
   try {

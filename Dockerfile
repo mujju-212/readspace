@@ -35,3 +35,4 @@ USER node
 EXPOSE 5173
 
 CMD ["node", "server/index.mjs"]
+

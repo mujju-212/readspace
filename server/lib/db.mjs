@@ -47,25 +47,35 @@ class JsonCollection {
 
 class JsonDb {
   constructor() {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    this.data = {};
-    if (fs.existsSync(DB_FILE)) {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-        for (const c of COLLECTIONS) this.data[c] = new Map(Object.entries(parsed[c] ?? {}));
-      } catch {
-        console.warn('[db] could not parse db file, starting fresh');
-      }
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch {
+      // In read-only environments (e.g. serverless without MONGODB_URI), operate in memory
     }
+    this.data = {};
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+          for (const c of COLLECTIONS) this.data[c] = new Map(Object.entries(parsed[c] ?? {}));
+        } catch {
+          console.warn('[db] could not parse db file, starting fresh');
+        }
+      }
+    } catch {}
     for (const c of COLLECTIONS) if (!this.data[c]) this.data[c] = new Map();
   }
 
   saveTimer = null;
 
   persistNow() {
-    const out = {};
-    for (const c of COLLECTIONS) out[c] = Object.fromEntries(this.data[c]);
-    fs.writeFileSync(DB_FILE, JSON.stringify(out, null, 1));
+    try {
+      const out = {};
+      for (const c of COLLECTIONS) out[c] = Object.fromEntries(this.data[c]);
+      fs.writeFileSync(DB_FILE, JSON.stringify(out, null, 1));
+    } catch (e) {
+      // Disk write may fail on read-only serverless lambdas
+    }
   }
 
   persist = () => {

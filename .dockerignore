@@ -8,3 +8,4 @@ docs/images
 *.log
 .env
 .env.local
+

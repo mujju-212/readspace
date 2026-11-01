@@ -6,6 +6,7 @@ import {
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
 import { isoBase64URL, isoUint8Array } from '@simplewebauthn/server/helpers';
+import { db } from './db.mjs';
 
 /**
  * Memory stores for in-flight WebAuthn challenges (5 min TTL).
@@ -85,10 +86,15 @@ export async function createPasskeyRegistrationOptions(req, user) {
     timeout: 60000,
   });
 
+  const exp = Date.now() + 5 * 60 * 1000;
   registrationChallenges.set(user._id, {
     challenge: options.challenge,
-    expiresAt: Date.now() + 5 * 60 * 1000,
+    expiresAt: exp,
   });
+  await db.coll('oauthStates').put(`reg_challenge_${user._id}`, {
+    challenge: options.challenge,
+    expiresAt: exp,
+  }).catch(() => {});
 
   return options;
 }
@@ -97,11 +103,15 @@ export async function createPasskeyRegistrationOptions(req, user) {
  * Verify WebAuthn registration response and return new passkey object.
  */
 export async function verifyPasskeyRegistration(req, user, responseBody, passkeyName) {
-  const pending = registrationChallenges.get(user._id);
+  let pending = registrationChallenges.get(user._id);
+  if (!pending) {
+    pending = await db.coll('oauthStates').get(`reg_challenge_${user._id}`).catch(() => null);
+  }
   if (!pending || pending.expiresAt < Date.now()) {
     throw new Error('Registration challenge expired or missing. Please try again.');
   }
   registrationChallenges.delete(user._id);
+  await db.coll('oauthStates').delete(`reg_challenge_${user._id}`).catch(() => {});
 
   const verification = await verifyRegistrationResponse({
     response: responseBody,
@@ -139,7 +149,12 @@ export async function createPasskeyLoginOptions(req) {
     timeout: 60000,
   });
 
-  authenticationChallenges.set(options.challenge, Date.now() + 5 * 60 * 1000);
+  const exp = Date.now() + 5 * 60 * 1000;
+  authenticationChallenges.set(options.challenge, exp);
+  await db.coll('oauthStates').put(`auth_challenge_${options.challenge}`, {
+    challenge: options.challenge,
+    expiresAt: exp,
+  }).catch(() => {});
 
   return options;
 }
@@ -155,10 +170,22 @@ export async function verifyPasskeyLogin(req, users, responseBody) {
     clientChallenge = clientData.challenge;
   } catch {}
 
-  if (!clientChallenge || !authenticationChallenges.has(clientChallenge)) {
+  let hasChallenge = authenticationChallenges.has(clientChallenge);
+  let pendingChallenge = null;
+  if (!hasChallenge && clientChallenge) {
+    pendingChallenge = await db.coll('oauthStates').get(`auth_challenge_${clientChallenge}`).catch(() => null);
+    if (pendingChallenge && pendingChallenge.expiresAt >= Date.now()) {
+      hasChallenge = true;
+    }
+  }
+
+  if (!clientChallenge || !hasChallenge) {
     throw new Error('Login challenge expired or invalid. Please try again.');
   }
   authenticationChallenges.delete(clientChallenge);
+  if (pendingChallenge) {
+    await db.coll('oauthStates').delete(`auth_challenge_${clientChallenge}`).catch(() => {});
+  }
 
   // Match the passkey to its owner
   let matchedUser = null;

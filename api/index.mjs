@@ -6,6 +6,21 @@ import { mockAuthorizePage, mockConsumeCode, seedMockDrive } from '../server/lib
 void seedMockDrive('demo-user-0001').catch(() => undefined);
 
 export default async function handler(req, res) {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-requested-with, Cookie, Set-Cookie, x-session-id, X-Session-Id, *');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
+
   const url = new URL(req.url ?? '/', `https://${req.headers.host ?? 'localhost'}`);
   const pathname = decodeURIComponent(url.pathname);
 
