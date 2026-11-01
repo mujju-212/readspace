@@ -32,3 +32,6 @@ data/
 uploads/
 scratch/
 -w
+
+.vercel
+.env*.local
