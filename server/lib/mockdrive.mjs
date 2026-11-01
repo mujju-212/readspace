@@ -268,7 +268,21 @@ export function mockDriveList(userId, { parent = 'root', pageToken, pageSize = 3
     files = [...s.files.values()].filter((f) =>
       (parent === 'root' ? f.parents.length === 0 : f.parents.includes(parent)));
   }
-  if (q) files = files.filter((f) => f.name.toLowerCase().includes(String(q).toLowerCase()));
+  if (q) {
+    // minimal Drive query-language subset: `name contains 'x'`, `mimeType='m'`,
+    // `mimeType!='m'`, `'id' in parents`, `trashed = false`, joined by AND;
+    // anything else falls back to a name substring match
+    const conds = String(q).split(/\s+and\s+/i);
+    files = files.filter((f) => conds.every((c0) => {
+      const c = c0.trim();
+      let mm;
+      if ((mm = c.match(/^name\s+contains\s+'([^']*)'$/i))) return f.name.toLowerCase().includes(mm[1].toLowerCase());
+      if ((mm = c.match(/^mimeType\s*(!?=)\s*'([^']*)'$/i))) return mm[1] === '=' ? f.mimeType === mm[2] : f.mimeType !== mm[2];
+      if ((mm = c.match(/^'([^']*)'\s+in\s+parents$/i))) return (f.parents ?? []).includes(mm[1]);
+      if (/^trashed\s*=\s*(false|true)$/i.test(c)) return true; // mock keeps nothing trashed
+      return f.name.toLowerCase().includes(c.toLowerCase());
+    }));
+  }
   files.sort((a, b) => (a.mimeType === FOLDER_MIME ? 0 : 1) - (b.mimeType === FOLDER_MIME ? 0 : 1) || a.name.localeCompare(b.name));
   const start = pageToken ? Number(pageToken) : 0;
   const size = Math.max(1, Math.min(50, pageSize || 3));
@@ -289,6 +303,17 @@ export function mockDriveContent(userId, id, resourceKey) {
   const hit = findAccessible(userId, id, resourceKey);
   const f = hit && !hit.denied ? hit.file : null;
   if (!f) return null;
+  if (f.mimeType === FOLDER_MIME) {
+    // mirror the real Drive API: folders have no binary content (routes.mjs
+    // turns this into a 400 isFolder response)
+    throw Object.assign(new Error('Item is a Google Drive folder and cannot be downloaded as binary content.'), {
+      status: 400,
+      codeName: 'is_folder',
+      isFolder: true,
+      folderId: id,
+      folderName: f.name,
+    });
+  }
   if (f.mimeType === GDOC_MIME) return null; // must export
   return Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content, 'utf8');
 }

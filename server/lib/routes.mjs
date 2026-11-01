@@ -629,7 +629,7 @@ try {
 
     if (method === 'POST' && pathname === '/api/drive/files') {
       if (!sameOriginOk(req)) throw httpError(403, 'Cross-origin request blocked', 'csrf');
-      const { accessToken } = await withDrive(req);
+      const { user, accessToken } = await withDrive(req);
       const parent = url.searchParams.get('parentId') ?? 'root';
       const name = url.searchParams.get('name') ?? 'untitled';
       const mimeType = url.searchParams.get('mimeType') ?? 'application/octet-stream';
