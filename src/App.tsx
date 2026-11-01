@@ -342,8 +342,20 @@ export default function App() {
   }, [dragging]);
 
   return (
-    <div className={`app${dragging ? ' dragging' : ''}`}>
-      <TitleBar onQuickOpen={() => setQuickOpen(true)} onOpenDrive={openDrive} onHome={() => setHomeOpen(true)} />
+    <div className={`app${dragging ? ' dragging' : ''}`} data-zen={zen ? 'true' : undefined}>
+      {zen ? (
+        <button
+          type="button"
+          className="zen-exit"
+          title="Exit zen mode (Ctrl+Alt+Z)"
+          aria-label="Exit zen mode"
+          onClick={() => useSettings.getState().set({ zen: false, sidebarVisible: true })}
+        >
+          ✕ Exit zen
+        </button>
+      ) : (
+        <TitleBar onQuickOpen={() => setQuickOpen(true)} onOpenDrive={openDrive} onHome={() => setHomeOpen(true)} />
+      )}
 
       {pendingReconnect && (
         <div className="reconnect-banner" role="alert">
