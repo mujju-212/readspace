@@ -173,34 +173,23 @@ export async function driveFileMeta(accessToken, id, resourceKey, { forceRefresh
   return json;
 }
 
-export async function driveFileContent(accessToken, id, { exportMime, resourceKey, metaHint } = {}) {
+export async function driveFileContent(accessToken, id, { exportMime, resourceKey, metaHint, range } = {}) {
   if (googleMode === 'sandbox') {
     if (exportMime) {
       const buf = mockDriveExport('demo-user-0001', id, resourceKey);
       if (!buf) throw Object.assign(new Error('export not available'), { status: 404 });
-      return { buffer: buf, mimeType: exportMime };
+      return { buffer: buf, mimeType: exportMime, status: 200 };
     }
     const buf = mockDriveContent('demo-user-0001', id, resourceKey);
     if (!buf) throw Object.assign(new Error('content not available'), { status: 404 });
-    return { buffer: buf, mimeType: 'application/octet-stream' };
+    return { buffer: buf, mimeType: 'application/octet-stream', status: 200 };
   }
 
   let effectiveExport = exportMime;
   let meta = metaHint || metaCache.get(id)?.data;
 
-  // FAST PATH: If no export mime and no meta known, attempt direct alt=media download immediately
+  // Retrieve metadata if not cached yet and not known
   if (!effectiveExport && !meta) {
-    const directPath = `/files/${encodeURIComponent(id)}?alt=media&${qs({ resourceKey })}`;
-    const directRes = await driveFetch(accessToken, directPath);
-    if (directRes.ok) {
-      const mimeType = directRes.headers.get('content-type') || 'application/octet-stream';
-      return { buffer: Buffer.from(await directRes.arrayBuffer()), mimeType };
-    }
-    // If direct failed with 400/403, proceed to inspect metadata for folder or docs export
-  }
-
-  // Retrieve metadata if not cached yet
-  if (!meta) {
     try {
       meta = await driveFileMeta(accessToken, id, resourceKey);
     } catch (err) {
@@ -234,8 +223,13 @@ export async function driveFileContent(accessToken, id, { exportMime, resourceKe
     ? `/files/${encodeURIComponent(id)}/export?mimeType=${encodeURIComponent(effectiveExport)}&${qs({ resourceKey })}`
     : `/files/${encodeURIComponent(id)}?alt=media&${qs({ resourceKey })}`;
 
-  const res = await driveFetch(accessToken, path);
-  if (!res.ok) {
+  const fetchHeaders = {};
+  if (range && !effectiveExport) {
+    fetchHeaders.range = range;
+  }
+
+  const res = await driveFetch(accessToken, path, { headers: fetchHeaders });
+  if (!res.ok && res.status !== 206) {
     const text = await res.text().catch(() => '');
     let errMsg = `download failed (${res.status})`;
     try {
@@ -246,7 +240,17 @@ export async function driveFileContent(accessToken, id, { exportMime, resourceKe
   }
 
   const mimeType = effectiveExport || res.headers.get('content-type') || meta?.mimeType || 'application/octet-stream';
-  return { buffer: Buffer.from(await res.arrayBuffer()), mimeType, name: meta?.name };
+  const contentRange = res.headers.get('content-range');
+  const contentLength = res.headers.get('content-length');
+
+  return {
+    stream: res.body,
+    mimeType,
+    name: meta?.name,
+    status: res.status,
+    contentRange,
+    contentLength,
+  };
 }
 
 /** Seed token for incremental change polling (M6 — Drive Changes API). */

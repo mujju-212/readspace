@@ -39,7 +39,7 @@ function sanitizeReturnTo(rt) {
   if (rt === '/' || (/^\/[^\/]/.test(rt) && !rt.startsWith('//'))) return rt;
   try {
     const u = new URL(rt);
-    if (u.protocol === 'readspace:' || u.protocol === 'exp:' || u.protocol === 'exps:') return rt;
+    if (u.protocol === 'readspace:' || u.protocol === 'com.readspace.app:' || u.protocol === 'exp:' || u.protocol === 'exps:') return rt;
     if (u.protocol === 'http:' || u.protocol === 'https:') {
       const hostname = u.hostname.toLowerCase();
       if (
@@ -245,34 +245,43 @@ export async function handleApi(req, res, pathname) {
       const activeConn = await getConnection(user._id);
       const isDriveConnected = Boolean(activeConn && activeConn.status === 'connected');
 
-      const sid = await createSession(user._id);
+const sid = await createSession(user._id);
       const back = sanitizeReturnTo(pending.returnTo);
       let targetUrl;
+      let intentUrl = '';
       if (back.startsWith('http://') || back.startsWith('https://') || back.includes('://')) {
         const u = new URL(back);
         u.searchParams.set('signedin', '1');
         if (pending.withDrive) u.searchParams.set('drive', '1');
         u.searchParams.set('token', sid);
         targetUrl = u.toString();
+
+        if (targetUrl.startsWith('com.readspace.app://') || targetUrl.startsWith('readspace://')) {
+          const qPart = targetUrl.includes('?') ? '?' + targetUrl.split('?')[1] : '';
+          intentUrl = `intent://auth${qPart}#Intent;scheme=com.readspace.app;package=com.readspace.app;end`;
+        }
       } else {
         const sep = back.includes('?') ? '&' : '?';
         targetUrl = `${baseUrl(req)}${back}${sep}signedin=1${pending.withDrive ? '&drive=1' : ''}&token=${sid}`;
       }
 
-      const htmlBridge = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing In...</title></head><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f172a;color:#f8fafc;padding:20px;box-sizing:border-box"><div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px 24px;text-align:center;max-width:400px;width:100%"><div style="font-size:36px;margin-bottom:12px">✨</div><p style="font-size:18px;font-weight:700;margin-bottom:8px">Signed in successfully!</p><p style="font-size:14px;color:#94a3b8;margin-bottom:20px">Redirecting to ReadSpace...</p><a id="actionBtn" href="${targetUrl}" style="display:inline-block;width:100%;padding:12px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;box-sizing:border-box">Return to ReadSpace App</a></div><script>
+      const primaryActionUrl = intentUrl || targetUrl;
+
+      const htmlBridge = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing In...</title></head><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f172a;color:#f8fafc;padding:20px;box-sizing:border-box"><div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px 24px;text-align:center;max-width:400px;width:100%"><div style="font-size:36px;margin-bottom:12px">✨</div><p style="font-size:18px;font-weight:700;margin-bottom:8px">Signed in successfully!</p><p style="font-size:14px;color:#94a3b8;margin-bottom:20px">Redirecting to ReadSpace...</p><a id="actionBtn" href="${primaryActionUrl}" style="display:inline-block;width:100%;padding:14px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;box-sizing:border-box;box-shadow:0 4px 12px rgba(37,99,235,0.3)">Return to ReadSpace App</a>${intentUrl ? `<div style="margin-top:14px"><a id="directSchemeBtn" href="${targetUrl}" style="color:#60a5fa;font-size:13px;text-decoration:underline">Trouble opening? Tap direct deep link</a></div>` : ''}</div><script>
 try {
   if (window.opener && window.opener !== window) {
     window.opener.postMessage({ type: 'rs_auth_complete', token: ${JSON.stringify(sid)}, drive: ${isDriveConnected}, driveConnected: ${isDriveConnected}, user: ${JSON.stringify(publicUser(user))} }, '*');
     setTimeout(() => { window.close(); }, 350);
   } else {
-    window.location.href = ${JSON.stringify(targetUrl)};
+    window.location.href = ${JSON.stringify(primaryActionUrl)};
     setTimeout(() => {
       var btn = document.getElementById('actionBtn');
       if (btn) btn.click();
-    }, 150);
+    }, 200);
+    ${intentUrl ? `setTimeout(() => { window.location.href = ${JSON.stringify(targetUrl)}; }, 600);` : ''}
   }
 } catch(e) {
-  window.location.href = ${JSON.stringify(targetUrl)};
+  window.location.href = ${JSON.stringify(primaryActionUrl)};
 }
 </script></body></html>`;
 
@@ -600,18 +609,37 @@ try {
       const id = decodeURIComponent(pathname.split('/')[4]);
       const exportMime = url.searchParams.get('export') ?? undefined;
       const cachedMeta = metaCache.get(`${user._id}:${id}`)?.data || metaCache.get(id)?.data;
+      const range = req.headers.range;
       try {
-        const { buffer, mimeType } = await driveFileContent(accessToken, id, {
+        const { buffer, stream, mimeType, status, contentRange, contentLength } = await driveFileContent(accessToken, id, {
           exportMime,
           resourceKey: url.searchParams.get('resourceKey') ?? undefined,
           metaHint: cachedMeta,
+          range,
         });
-        res.writeHead(200, {
+
+        const headers = {
           'content-type': mimeType,
-          'content-length': String(buffer.length),
+          'accept-ranges': 'bytes',
           'cache-control': 'private, max-age=300',
-        });
-        return res.end(buffer);
+        };
+        if (contentRange) headers['content-range'] = contentRange;
+        if (contentLength) headers['content-length'] = contentLength;
+        else if (buffer) headers['content-length'] = String(buffer.length);
+
+        const respStatus = status || (range && contentRange ? 206 : 200);
+        res.writeHead(respStatus, headers);
+
+        if (stream && typeof stream.pipe === 'function') {
+          return stream.pipe(res);
+        } else if (stream && typeof stream.getReader === 'function') {
+          const { Readable } = await import('node:stream');
+          return Readable.fromWeb(stream).pipe(res);
+        } else if (buffer) {
+          return res.end(buffer);
+        } else {
+          return res.end();
+        }
       } catch (err) {
         if (err.isFolder) {
           return json(res, 400, {

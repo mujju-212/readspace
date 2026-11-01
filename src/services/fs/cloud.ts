@@ -112,6 +112,11 @@ export class CloudDriveProvider implements FileSystemProvider {
     return api.driveContent(meta.id);
   }
 
+  async getFileUrl(path: string): Promise<string> {
+    const meta = await this.metaFor(path);
+    return `/api/drive/files/${encodeURIComponent(meta.id)}/content`;
+  }
+
   async readText(path: string): Promise<string> {
     return new TextDecoder().decode(await this.readFile(path));
   }

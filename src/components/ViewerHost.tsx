@@ -43,7 +43,7 @@ export function setScrollFor(path: string, top: number): void {
 type Loaded =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; fileText?: string; buffer?: ArrayBuffer };
+  | { status: 'ready'; fileText?: string; buffer?: ArrayBuffer; url?: string };
 
 /**
  * The content area from the sketch ("Cont") — renders the active tab with the
@@ -89,6 +89,10 @@ export function ViewerHost({ tab }: { tab: Tab }) {
           useTabs.getState().setDirty(tab.id, restored !== t);
           if (restored !== t) toast('Restored unsaved edits from your last session', 'warn');
           setLoaded({ status: 'ready', fileText: t });
+        } else if ((rendererId === 'video' || rendererId === 'audio') && provider.getFileUrl) {
+          const directUrl = await provider.getFileUrl(tab.path);
+          if (!alive) return;
+          setLoaded({ status: 'ready', url: directUrl });
         } else {
           const buf = await provider.readFile(tab.path);
           if (!alive) return;
@@ -252,13 +256,13 @@ export function ViewerHost({ tab }: { tab: Tab }) {
       case 'audio':
         return (
           <Suspense fallback={<Spinner label="Loading audio player…" />}>
-            <ErrorBoundary><AudioView buffer={loaded.buffer!} name={tab.title} path={tab.path} /></ErrorBoundary>
+            <ErrorBoundary><AudioView buffer={loaded.buffer!} url={loaded.url} name={tab.title} path={tab.path} /></ErrorBoundary>
           </Suspense>
         );
       case 'video':
         return (
           <Suspense fallback={<Spinner label="Loading video player…" />}>
-            <ErrorBoundary><VideoView buffer={loaded.buffer!} name={tab.title} path={tab.path} /></ErrorBoundary>
+            <ErrorBoundary><VideoView buffer={loaded.buffer} url={loaded.url} name={tab.title} path={tab.path} /></ErrorBoundary>
           </Suspense>
         );
       case 'pptx':

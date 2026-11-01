@@ -25,6 +25,7 @@ export interface FileSystemProvider {
   readText(path: string): Promise<string>;
   writeFile(path: string, data: string): Promise<void>;
   stat?(path: string): Promise<FileStat>;
+  getFileUrl?(path: string): Promise<string> | string;
 }
 
 export type RendererId = 'markdown' | 'text' | 'html' | 'pdf' | 'docx' | 'image' | 'audio' | 'video' | 'pptx' | 'unknown';

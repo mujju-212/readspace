@@ -13,10 +13,12 @@ function formatTime(seconds: number): string {
 
 export default function VideoView({
   buffer,
+  url: directUrl,
   name,
   path,
 }: {
-  buffer: ArrayBuffer;
+  buffer?: ArrayBuffer;
+  url?: string;
   name: string;
   path: string;
 }) {
@@ -24,7 +26,7 @@ export default function VideoView({
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<number | null>(null);
 
-  const [videoUrl, setVideoUrl] = useState<string>('');
+  const [videoUrl, setVideoUrl] = useState<string>(directUrl || '');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -37,8 +39,14 @@ export default function VideoView({
   const [videoHeight, setVideoHeight] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Generate object URL from buffer
+  // Set video URL directly or generate object URL from buffer
   useEffect(() => {
+    if (directUrl) {
+      setVideoUrl(directUrl);
+      setError(null);
+      return;
+    }
+    if (!buffer) return;
     try {
       const ext = name.split('.').pop()?.toLowerCase();
       let mime = 'video/mp4';
@@ -58,7 +66,7 @@ export default function VideoView({
     } catch (e) {
       setError('Unable to load video file buffer');
     }
-  }, [buffer, name]);
+  }, [buffer, directUrl, name]);
 
   // Video event handlers
   const handleLoadedMetadata = () => {

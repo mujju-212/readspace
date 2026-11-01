@@ -10,10 +10,12 @@ function formatTime(seconds: number): string {
 
 export default function AudioView({
   buffer,
+  url,
   name,
   path,
 }: {
-  buffer: ArrayBuffer;
+  buffer?: ArrayBuffer;
+  url?: string;
   name: string;
   path: string;
 }) {
