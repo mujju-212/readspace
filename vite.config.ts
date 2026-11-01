@@ -8,6 +8,12 @@ export default defineConfig({
     port: 5173,
     // allow the sandboxed preview proxy host
     allowedHosts: true,
+    // forward backend routes to the one-process server (npm run serve) so
+    // `npm run dev` is full-stack: run it with PORT=5174 (see .env / README)
+    proxy: {
+      '/api': { target: process.env.API_PROXY_TARGET || 'http://localhost:5174', changeOrigin: true },
+      '/mock': { target: process.env.API_PROXY_TARGET || 'http://localhost:5174', changeOrigin: true },
+    },
   },
   preview: {
     host: true,
