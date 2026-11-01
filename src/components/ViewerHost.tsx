@@ -234,7 +234,7 @@ export function ViewerHost({ tab }: { tab: Tab }) {
       case 'html':
         return <ErrorBoundary><HtmlView text={text} path={tab.path} /></ErrorBoundary>;
       case 'text':
-        return <TextView text={text} />;
+        return <TextView text={text} ext={tab.ext} />;
       case 'pdf':
         return (
           <Suspense fallback={<Spinner label="Loading PDF engine…" />}>

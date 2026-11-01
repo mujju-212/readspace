@@ -30,23 +30,89 @@ export interface FileSystemProvider {
 export type RendererId = 'markdown' | 'text' | 'html' | 'pdf' | 'docx' | 'image' | 'audio' | 'video' | 'pptx' | 'unknown';
 
 const RENDERER_FOR_EXT: Record<string, RendererId> = {
+  // Documentation / Notes
   md: 'markdown',
   markdown: 'markdown',
   mdx: 'markdown',
-  html: 'html',
-  htm: 'html',
   txt: 'text',
+  text: 'text',
   log: 'text',
   csv: 'text',
+  tsv: 'text',
+
+  // Web & Styles
+  html: 'html',
+  htm: 'html',
+  xml: 'text',
+  css: 'text',
+  scss: 'text',
+  sass: 'text',
+  less: 'text',
+
+  // JavaScript & TypeScript
+  js: 'text',
+  mjs: 'text',
+  cjs: 'text',
+  jsx: 'text',
+  ts: 'text',
+  tsx: 'text',
+
+  // Python & Data Science
+  py: 'text',
+  pyw: 'text',
+  r: 'text',
+
+  // Systems & Compiled Languages
+  c: 'text',
+  h: 'text',
+  cpp: 'text',
+  hpp: 'text',
+  cc: 'text',
+  cxx: 'text',
+  cs: 'text',
+  java: 'text',
+  go: 'text',
+  rs: 'text',
+  swift: 'text',
+  kt: 'text',
+  kts: 'text',
+  dart: 'text',
+  scala: 'text',
+
+  // Web Backends & Scripting
+  php: 'text',
+  rb: 'text',
+  lua: 'text',
+  sh: 'text',
+  bash: 'text',
+  zsh: 'text',
+  fish: 'text',
+  ps1: 'text',
+  psm1: 'text',
+  bat: 'text',
+  cmd: 'text',
+  sql: 'text',
+
+  // Config & Structured Formats
   json: 'text',
+  jsonc: 'text',
   yml: 'text',
   yaml: 'text',
+  toml: 'text',
   ini: 'text',
   conf: 'text',
+  env: 'text',
+  properties: 'text',
+  dockerfile: 'text',
+  gitignore: 'text',
+
+  // Office & Rich Documents
   pdf: 'pdf',
   docx: 'docx',
   pptx: 'pptx',
   ppt: 'pptx',
+
+  // Images
   png: 'image',
   jpg: 'image',
   jpeg: 'image',
@@ -55,12 +121,16 @@ const RENDERER_FOR_EXT: Record<string, RendererId> = {
   svg: 'image',
   bmp: 'image',
   ico: 'image',
+
+  // Audio
   mp3: 'audio',
   wav: 'audio',
   ogg: 'audio',
   m4a: 'audio',
   aac: 'audio',
   flac: 'audio',
+
+  // Video
   mp4: 'video',
   webm: 'video',
   ogv: 'video',
@@ -95,7 +165,12 @@ export function rendererLabel(id: RendererId): string {
 export function extOf(path: string): string {
   const base = path.split('/').pop() ?? '';
   const i = base.lastIndexOf('.');
-  return i > 0 ? base.slice(i + 1) : '';
+  if (i > 0) return base.slice(i + 1);
+  if (i === 0) return base.slice(1);
+  const lower = base.toLowerCase();
+  if (lower === 'dockerfile') return 'dockerfile';
+  if (lower === 'makefile') return 'makefile';
+  return '';
 }
 
 export function basename(path: string): string {
