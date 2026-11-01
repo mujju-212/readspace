@@ -1,0 +1,10 @@
+node_modules
+dist
+readspace_app
+.git
+.github
+screenshots
+docs/images
+*.log
+.env
+.env.local
