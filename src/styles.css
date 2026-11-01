@@ -521,6 +521,7 @@ kbd {
 .md-body th, .md-body td, .docx-body th, .docx-body td { border: 1px solid var(--border); padding: 6px 11px; text-align: left; }
 .md-body th, .docx-body th { background: var(--panel); font-weight: 620; }
 .md-body img, .docx-body img { max-width: 100%; border-radius: 8px; }
+.md-body svg { max-width: 100%; height: auto; }
 .md-body hr, .docx-body hr { border: none; border-top: 1px solid var(--border); margin: 1.6em 0; }
 .md-body input[type='checkbox'] { accent-color: var(--accent); margin-right: 0.45em; }
 .md-body ul:has(> li > input[type='checkbox']) { list-style: none; padding-left: 0.3em; }
@@ -971,6 +972,24 @@ kbd {
 
 /* zen mode keeps it all about the content */
 .app[data-zen='true'] .content { background: var(--bg); }
+
+/* zen mode: no title bar, just a faint floating exit affordance */
+.zen-exit {
+  position: fixed;
+  top: 10px;
+  right: 14px;
+  z-index: 80;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.25;
+  transition: opacity 0.2s ease;
+}
+.zen-exit:hover, .zen-exit:focus-visible { opacity: 1; }
 
 /* small screens: the divider still works but the sidebar starts narrow */
 @media (max-width: 760px) {
