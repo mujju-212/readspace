@@ -153,6 +153,18 @@ export function Explorer() {
           <button type="button" className="icon-btn" title="Refresh tree (FR-6)" onClick={() => { void refreshRoot(); toast('Refreshed', 'ok'); }}>
             <Refresh size={13} />
           </button>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Close workspace / Return to Home"
+            aria-label="Close workspace"
+            onClick={() => {
+              useWorkspace.getState().closeWorkspace();
+              toast('Workspace closed', 'ok');
+            }}
+          >
+            ✕
+          </button>
         </span>
       </div>
 

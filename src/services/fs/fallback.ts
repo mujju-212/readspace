@@ -15,13 +15,15 @@ export class FallbackProvider implements FileSystemProvider {
   private dirs = new Set<string>();
 
   constructor(fileList: File[], extraDirs?: string[]) {
-    let rootName = 'folder';
+    let rootName = fileList.length === 1 ? fileList[0].name : (fileList.length > 1 ? 'Files' : 'folder');
     for (const f of fileList) {
       const rawRel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
       const rel = rawRel.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
       const parts = rel.split('/').filter(Boolean);
-      if (parts.length > 1) rootName = parts[0];
-      parts.shift(); // strip the picked folder itself
+      if (parts.length > 1) {
+        rootName = parts[0];
+        parts.shift(); // strip the picked folder itself
+      }
       if (parts.length === 0) continue;
       const path = parts.join('/');
       this.files.set(path, f);

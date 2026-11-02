@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { openFolderFlow, fsaSupported, reconnectFsa } from '../../services/fs/open';
-import { getHandle, getRecents, kvSet, type RecentFolder } from '../../services/persistence';
+import { openFolderFlow, openFileFlow, fsaSupported, reconnectFsa } from '../../services/fs/open';
+import { getHandle, getRecents, removeRecent, clearAllRecents, kvSet, type RecentFolder } from '../../services/persistence';
 import { storedDriveKey, createGDriveProvider, createGDriveKeyless } from '../../services/fs/gdrive';
 import { useAuth } from '../../stores/auth';
 import { useCloudUI } from '../../stores/cloudui';
@@ -69,6 +69,17 @@ export function Welcome({ pendingReconnect, onOpenDrive }: {
   const onOpenFolder = async () => {
     const p = await openFolderFlow();
     if (p) void installProvider(p);
+  };
+
+  const onOpenFile = async () => {
+    const p = await openFileFlow();
+    if (p) void installProvider(p);
+  };
+
+  const handleClearAllRecents = async () => {
+    await clearAllRecents();
+    setRecents([]);
+    toast('Recents cleared', 'ok');
   };
 
   const onReconnect = async (label: string, handle: FileSystemDirectoryHandle) => {
@@ -210,10 +221,15 @@ export function Welcome({ pendingReconnect, onOpenDrive }: {
 
         <section className="home-section" aria-label="Quick actions">
           <div className="qa-grid">
+            <button type="button" className="qa-card" onClick={() => void onOpenFile()}>
+              <span className="qa-icon">📄</span>
+              <span className="qa-name">Open File</span>
+              <span className="qa-desc">Open documents directly (PDF, DOCX, TXT, EPUB, code, etc.).</span>
+            </button>
             <button type="button" className="qa-card" onClick={() => void onOpenFolder()}>
               <span className="qa-icon"><Plus size={16} /></span>
-              <span className="qa-name">Local Files</span>
-              <span className="qa-desc">Open a folder from this device{fsaSupported() ? ' with read & write' : ' (read-only in this browser)'}.</span>
+              <span className="qa-name">Open Folder</span>
+              <span className="qa-desc">Open a folder workspace from this device{fsaSupported() ? ' with read & write' : ' (read-only in this browser)'}.</span>
             </button>
             <button
               type="button"
@@ -274,19 +290,49 @@ export function Welcome({ pendingReconnect, onOpenDrive }: {
 
         <div className="home-cols">
           <section className="home-section" aria-label="Recent items" style={{ marginTop: 0 }}>
-            <h2>Recent Items</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <h2 style={{ margin: 0 }}>Recent Items</h2>
+              {recents.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ fontSize: 11, padding: '2px 8px', height: 22, color: 'var(--text-muted)' }}
+                  onClick={handleClearAllRecents}
+                  title="Clear all recent items"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
             {recents.length === 0 ? (
-              <div className="home-empty">No recent activity yet — open a folder or a link to get started.</div>
+              <div className="home-empty">No recent activity yet — open a folder, a file or a link to get started.</div>
             ) : (
               <div className="panel-list">
                 {recents.map((r) => (
-                  <button key={`${r.kind}:${r.label}`} type="button" className="pl-item" onClick={() => restoreRecent(r)}>
-                    <ProviderBadge kind={r.kind === 'gdrive' ? 'drive' : r.kind === 'sample' ? 'demo' : 'local'} />
-                    <span className="pl-main">
-                      <span className="pl-name">{r.label}</span>
-                      <span className="pl-sub">{r.kind === 'sample' ? 'Demo workspace' : r.kind === 'gdrive' ? 'Google Drive' : r.kind === 'fsa' ? 'Local folder' : 'Read-only snapshot'}</span>
-                    </span>
-                  </button>
+                  <div key={`${r.kind}:${r.label}`} className="pl-item-row" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                    <button type="button" className="pl-item" style={{ flex: 1, paddingRight: 32 }} onClick={() => restoreRecent(r)}>
+                      <ProviderBadge kind={r.kind === 'gdrive' ? 'drive' : r.kind === 'sample' ? 'demo' : 'local'} />
+                      <span className="pl-main">
+                        <span className="pl-name">{r.label}</span>
+                        <span className="pl-sub">{r.kind === 'sample' ? 'Demo workspace' : r.kind === 'gdrive' ? 'Google Drive' : r.kind === 'fsa' ? 'Local folder' : 'Local file / folder'}</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title={`Remove "${r.label}" from recents`}
+                      aria-label="Remove item"
+                      style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', opacity: 0.7, padding: '2px 6px', fontSize: 14 }}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const next = await removeRecent(r.label, r.kind);
+                        setRecents(next.slice(0, 6));
+                        toast(`Removed "${r.label}"`, 'ok');
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

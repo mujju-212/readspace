@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '../stores/workspace';
 import { useSettings, applyTheme, type ThemeName } from '../stores/settings';
 import { useTabs } from '../stores/tabs';
-import { openFolderFlow } from '../services/fs/open';
+import { openFolderFlow, openFileFlow } from '../services/fs/open';
 import { Logo, PanelLeft, Maximize, Moon, Sun, Leaf, Gear, Search, Plus, Cloud } from './Icons';
 import { SettingsPopover } from './SettingsPopover';
 import { AccountMenu, CloudMenu } from './AccountMenu';
@@ -69,7 +69,24 @@ export function TitleBar({ onQuickOpen, onOpenDrive, onHome }: { onQuickOpen: ()
           <Logo size={18} />
           <span className="brand-name">ReadSpace</span>
         </button>
-        {provider && <span className="ws-label" title={`Workspace: ${provider.id}`}>{provider.label}</span>}
+        {provider && (
+          <span className="ws-label" title={`Workspace: ${provider.id}`}>
+            {provider.label}
+            <button
+              type="button"
+              className="ws-close-btn"
+              title="Close workspace / Return to Home"
+              aria-label="Close workspace"
+              onClick={(e) => {
+                e.stopPropagation();
+                useWorkspace.getState().closeWorkspace();
+                toast('Workspace closed', 'ok');
+              }}
+            >
+              ×
+            </button>
+          </span>
+        )}
       </div>
 
       <div className="tb-center">
@@ -83,6 +100,14 @@ export function TitleBar({ onQuickOpen, onOpenDrive, onHome }: { onQuickOpen: ()
         <AccountMenu />
         <button type="button" className="btn tb-desktop-only" onClick={onOpenDrive} title="Open from Google Drive (public link)" aria-label="Open from Google Drive">
           <Cloud size={14} /> Drive
+        </button>
+        <button
+          type="button"
+          className="btn tb-desktop-only"
+          onClick={() => void openFileFlow().then((p) => p && useWorkspace.getState().installProvider(p))}
+          title="Open single or multiple files (PDF, DOCX, TXT...)"
+        >
+          📄 Open File
         </button>
         <button type="button" className="btn tb-desktop-only" onClick={() => void openFolderFlow().then((p) => p && useWorkspace.getState().installProvider(p))} title="Open a folder as workspace">
           <Plus size={14} /> Open Folder

@@ -2910,3 +2910,6 @@ kbd {
 }
 
 
+
+.ws-close-btn { display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 0 4px; border-radius: 50%; font-size: 14px; line-height: 1; }
+.ws-close-btn:hover { color: var(--fg); background: var(--hover); }

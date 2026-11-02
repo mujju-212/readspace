@@ -169,6 +169,59 @@ export async function openFolderFlow(): Promise<FileSystemProvider | null> {
   return openFolderFallback();
 }
 
+/** Open Single or Multiple Files directly */
+export async function openFileFlow(): Promise<FallbackProvider | null> {
+  // Use FSA showOpenFilePicker if supported and not blocked
+  if (typeof window !== 'undefined' && typeof (window as any).showOpenFilePicker === 'function') {
+    try {
+      const handles: FileSystemFileHandle[] = await (window as any).showOpenFilePicker({
+        multiple: true,
+      });
+      if (!handles || handles.length === 0) return null;
+      const files: File[] = [];
+      for (const h of handles) {
+        try {
+          const f = await h.getFile();
+          files.push(f);
+        } catch {}
+      }
+      if (files.length === 0) return null;
+      const p = new FallbackProvider(files);
+      const label = files.length === 1 ? files[0].name : `${files[0].name} (+${files.length - 1} files)`;
+      await Promise.all([
+        addRecent({ kind: 'fallback', label, ts: Date.now() }),
+        kvSet('last', { kind: 'fallback', label }),
+      ]);
+      return p;
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return null;
+      // if blocked or failed, fall through to input fallback
+    }
+  }
+
+  // Fallback via standard <input type="file" multiple>
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      const files = Array.from(input.files ?? []);
+      input.remove();
+      if (files.length === 0) return resolve(null);
+      const p = new FallbackProvider(files);
+      const label = files.length === 1 ? files[0].name : `${files[0].name} (+${files.length - 1} files)`;
+      await Promise.all([
+        addRecent({ kind: 'fallback', label, ts: Date.now() }),
+        kvSet('last', { kind: 'fallback', label }),
+      ]);
+      resolve(p);
+    });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
 export async function loadSample(): Promise<SampleProvider> {
   await addRecent({ kind: 'sample', label: 'Sample workspace', ts: Date.now() });
   await kvSet('last', { kind: 'sample', label: 'sample' });

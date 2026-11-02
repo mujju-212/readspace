@@ -170,6 +170,23 @@ export async function getRecents(): Promise<RecentFolder[]> {
   return [];
 }
 
+export async function removeRecent(label: string, kind?: string): Promise<RecentFolder[]> {
+  const all = await getRecents();
+  const next = all.filter((x) => !(x.label === label && (!kind || x.kind === kind)));
+  try {
+    localStorage.setItem('rs.recents', JSON.stringify(next));
+  } catch { /* ignore */ }
+  await safe(() => tx('recents', 'readwrite', (s) => s.put(next, 'list')).then(() => undefined), undefined);
+  return next;
+}
+
+export async function clearAllRecents(): Promise<void> {
+  try {
+    localStorage.removeItem('rs.recents');
+  } catch { /* ignore */ }
+  await safe(() => tx('recents', 'readwrite', (s) => s.delete('list')).then(() => undefined), undefined);
+}
+
 /* ---------- unsaved-edit drafts (reliability NFR) ---------- */
 export const loadDraft = (pid: string, path: string) =>
   safe(() => tx<{ text: string } | undefined>('drafts', 'readonly', (s) => s.get(`${pid}::${path}`)), undefined)

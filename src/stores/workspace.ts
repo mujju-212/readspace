@@ -34,6 +34,7 @@ interface WorkspaceState {
   isSyncScanning: boolean;
 
   installProvider: (p: FileSystemProvider) => Promise<void>;
+  closeWorkspace: () => void;
   refreshRoot: () => Promise<void>;
   toggleDir: (path: string) => Promise<void>;
   loadChildren: (path: string) => Promise<void>;
@@ -155,6 +156,26 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } catch (e) {
       set({ busy: false, error: String((e as Error).message ?? e) });
     }
+  },
+
+  closeWorkspace: () => {
+    walkCache = null;
+    set({
+      provider: null,
+      entries: {},
+      expanded: {},
+      selected: null,
+      filter: '',
+      versions: {},
+      busy: false,
+      error: null,
+      cloudSync: null,
+      isSyncScanning: false,
+    });
+    document.title = 'ReadSpace';
+    void kvSet('last', null);
+    useTabs.getState().restore([], null);
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rs:open-home'));
   },
 
   refreshRoot: async () => {
