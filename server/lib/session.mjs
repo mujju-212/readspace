@@ -28,7 +28,12 @@ export async function destroySession(sid) {
 export async function userFromRequest(req) {
   const authHeader = req.headers['authorization'] || '';
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-  const sid = req.headers['x-session-id'] || bearerToken || parseCookies(req)[SESSION_COOKIE];
+  let queryToken = null;
+  try {
+    const parsedUrl = new URL(req.url ?? '/', 'http://local');
+    queryToken = parsedUrl.searchParams.get('token') || parsedUrl.searchParams.get('sid');
+  } catch {}
+  const sid = req.headers['x-session-id'] || bearerToken || parseCookies(req)[SESSION_COOKIE] || queryToken;
   if (!sid) return null;
   const session = await db.coll('sessions').get(sid);
   if (!session) return null;

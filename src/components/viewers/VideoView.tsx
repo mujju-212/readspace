@@ -44,7 +44,11 @@ export default function VideoView({
     if (directUrl) {
       setVideoUrl(directUrl);
       setError(null);
-      return;
+      return () => {
+        if (directUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(directUrl);
+        }
+      };
     }
     if (!buffer) return;
     try {

@@ -77,6 +77,12 @@ export class FsaProvider implements FileSystemProvider {
     return { size: file.size, modifiedTime: new Date(file.lastModified).toISOString() };
   }
 
+  async getFileUrl(path: string): Promise<string> {
+    const fh = await this.fileAt(path);
+    const file = await fh.getFile();
+    return URL.createObjectURL(file);
+  }
+
   async readFile(path: string): Promise<ArrayBuffer> {
     const fh = await this.fileAt(path);
     return (await fh.getFile()).arrayBuffer();

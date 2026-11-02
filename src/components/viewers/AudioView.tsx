@@ -41,10 +41,10 @@ export default function AudioView({
   } = useAudioPlayer();
 
   useEffect(() => {
-    if (buffer) {
-      playTrack({ path, title: name, buffer });
+    if (url || buffer) {
+      playTrack({ path, title: name, buffer, url });
     }
-  }, [path, name, buffer, playTrack]);
+  }, [path, name, buffer, url, playTrack]);
 
   const ext = name.split('.').pop()?.toUpperCase() || 'AUDIO';
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;

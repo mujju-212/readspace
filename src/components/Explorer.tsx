@@ -6,7 +6,7 @@ import { useCloudUI } from '../stores/cloudui';
 import { useAuth } from '../stores/auth';
 import type { FsEntry } from '../services/fs/types';
 import { rendererForExt } from '../services/fs/types';
-import { ChevronDown, ChevronRight, FileIcon, Folder, FolderOpen, Refresh, Search, Cloud, CloudUpload } from './Icons';
+import { ChevronDown, ChevronRight, FileIcon, Folder, FolderOpen, Refresh, Search, Cloud, CloudUpload, Download } from './Icons';
 import { toast } from '../stores/toast';
 import { runWorkspaceDriveSync } from '../features/cloud/autoSync';
 
@@ -148,6 +148,29 @@ export function Explorer() {
               }}
             >
               <CloudUpload size={13} />
+            </button>
+          )}
+          {provider?.kind === 'clouddrive' && (
+            <button
+              type="button"
+              className="icon-btn"
+              title="Download entire Google Drive folder to computer"
+              onClick={async () => {
+                const { CloudDriveProvider } = await import('../services/fs/cloud');
+                const { pickLocalDestination, downloadFromDrive } = await import('../features/cloud/transfers');
+                const cloudP = provider as InstanceType<typeof CloudDriveProvider>;
+                const dest = await pickLocalDestination();
+                if (dest === 'cancelled') return;
+                try {
+                  toast(`Downloading workspace "${cloudP.label}"…`, 'info');
+                  await downloadFromDrive({ files: [], rootFolder: { id: cloudP.rootId, name: cloudP.label } }, dest === 'unavailable' ? null : dest);
+                  toast(`Workspace "${cloudP.label}" downloaded successfully`, 'ok');
+                } catch (err: any) {
+                  toast(`Download failed: ${err.message}`, 'warn');
+                }
+              }}
+            >
+              <Download size={13} />
             </button>
           )}
           <button type="button" className="icon-btn" title="Refresh tree (FR-6)" onClick={() => { void refreshRoot(); toast('Refreshed', 'ok'); }}>
@@ -358,21 +381,73 @@ function TreeNodeItem({
           </span>
         )}
         {entry.kind === 'directory' && provider?.kind === 'clouddrive' && (
+          <>
+            <span
+              className="tree-row-action"
+              title={`Download folder "${entry.name}" locally`}
+              onClick={async (e) => {
+                e.stopPropagation();
+                const { CloudDriveProvider } = await import('../services/fs/cloud');
+                const { pickLocalDestination, downloadFromDrive } = await import('../features/cloud/transfers');
+                const cloudP = provider as InstanceType<typeof CloudDriveProvider>;
+                const folderId = cloudP.getFolderId(entry.path);
+                if (folderId) {
+                  const dest = await pickLocalDestination();
+                  if (dest === 'cancelled') return;
+                  try {
+                    toast(`Downloading folder "${entry.name}"…`, 'info');
+                    await downloadFromDrive({ files: [], rootFolder: { id: folderId, name: entry.name } }, dest === 'unavailable' ? null : dest);
+                    toast(`Folder "${entry.name}" downloaded`, 'ok');
+                  } catch (err: any) {
+                    toast(`Download failed: ${err.message}`, 'warn');
+                  }
+                }
+              }}
+            >
+              ⬇
+            </span>
+            <span
+              className="tree-row-action"
+              title={`Focus only "${entry.name}" as workspace`}
+              onClick={async (e) => {
+                e.stopPropagation();
+                const { CloudDriveProvider } = await import('../services/fs/cloud');
+                const cloudP = provider as InstanceType<typeof CloudDriveProvider>;
+                const folderId = cloudP.getFolderId(entry.path);
+                if (folderId) {
+                  await useWorkspace.getState().installProvider(new CloudDriveProvider(folderId, entry.name));
+                  toast(`Opened "${entry.name}" as workspace`, 'ok');
+                }
+              }}
+            >
+              ⤢
+            </span>
+          </>
+        )}
+        {entry.kind === 'file' && provider?.kind === 'clouddrive' && (
           <span
             className="tree-row-action"
-            title={`Focus only "${entry.name}" as workspace`}
+            title={`Download "${entry.name}" locally`}
             onClick={async (e) => {
               e.stopPropagation();
               const { CloudDriveProvider } = await import('../services/fs/cloud');
+              const { pickLocalDestination, downloadFromDrive } = await import('../features/cloud/transfers');
               const cloudP = provider as InstanceType<typeof CloudDriveProvider>;
-              const folderId = cloudP.getFolderId(entry.path);
-              if (folderId) {
-                await useWorkspace.getState().installProvider(new CloudDriveProvider(folderId, entry.name));
-                toast(`Opened "${entry.name}" as workspace`, 'ok');
+              try {
+                const meta = await cloudP.metaFor(entry.path);
+                if (meta?.id) {
+                  const dest = await pickLocalDestination();
+                  if (dest === 'cancelled') return;
+                  toast(`Downloading "${entry.name}"…`, 'info');
+                  await downloadFromDrive({ files: [meta] }, dest === 'unavailable' ? null : dest);
+                  toast(`Downloaded "${entry.name}"`, 'ok');
+                }
+              } catch (err: any) {
+                toast(`Download failed: ${err.message}`, 'warn');
               }
             }}
           >
-            ⤢
+            ⬇
           </span>
         )}
       </button>

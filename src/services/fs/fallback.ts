@@ -76,6 +76,12 @@ export class FallbackProvider implements FileSystemProvider {
     return Promise.resolve({ size: f.size, modifiedTime: new Date(f.lastModified).toISOString() });
   }
 
+  getFileUrl(path: string): string | undefined {
+    const cleanPath = (path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const f = this.files.get(cleanPath);
+    return f ? URL.createObjectURL(f) : undefined;
+  }
+
   async readFile(path: string): Promise<ArrayBuffer> {
     const cleanPath = (path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     const f = this.files.get(cleanPath);

@@ -624,6 +624,9 @@ try {
           'accept-ranges': 'bytes',
           'cache-control': 'private, max-age=300',
         };
+        if (url.searchParams.get('download') === '1' && cachedMeta?.name) {
+          headers['content-disposition'] = `attachment; filename="${encodeURIComponent(cachedMeta.name)}"`;
+        }
         if (contentRange) headers['content-range'] = contentRange;
         if (contentLength) headers['content-length'] = contentLength;
         else if (buffer) headers['content-length'] = String(buffer.length);

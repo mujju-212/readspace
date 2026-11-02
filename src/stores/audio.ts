@@ -15,7 +15,7 @@ interface AudioState {
   loop: boolean;
   backgroundPlay: boolean;
 
-  playTrack: (track: { path: string; title: string; buffer: ArrayBuffer }) => void;
+  playTrack: (track: { path: string; title: string; buffer?: ArrayBuffer; url?: string }) => void;
   togglePlay: () => void;
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
@@ -82,12 +82,12 @@ export const useAudioPlayer = create<AudioState>((set, get) => ({
   loop: false,
   backgroundPlay: true,
 
-  playTrack: ({ path, title, buffer }) => {
+  playTrack: ({ path, title, buffer, url: directUrl }) => {
     const audio = getAudioElement();
     const state = get();
 
     // If same track is already loaded, don't restart
-    if (state.currentTrack?.path === path && currentObjectUrl) {
+    if (state.currentTrack?.path === path && (currentObjectUrl || directUrl)) {
       if (!state.isPlaying) {
         void audio.play().catch(() => {});
       }
@@ -97,11 +97,17 @@ export const useAudioPlayer = create<AudioState>((set, get) => ({
     // Revoke previous object URL if any
     if (currentObjectUrl) {
       URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = null;
     }
 
-    const blob = new Blob([buffer]);
-    const url = URL.createObjectURL(blob);
-    currentObjectUrl = url;
+    let url = directUrl || '';
+    if (!url && buffer) {
+      const blob = new Blob([buffer]);
+      url = URL.createObjectURL(blob);
+      currentObjectUrl = url;
+    }
+
+    if (!url) return;
 
     audio.src = url;
     audio.playbackRate = state.playbackRate;
