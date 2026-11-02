@@ -41,7 +41,9 @@ export default function AudioView({
   } = useAudioPlayer();
 
   useEffect(() => {
-    playTrack({ path, title: name, buffer });
+    if (buffer) {
+      playTrack({ path, title: name, buffer });
+    }
   }, [path, name, buffer, playTrack]);
 
   const ext = name.split('.').pop()?.toUpperCase() || 'AUDIO';
@@ -74,9 +76,11 @@ export default function AudioView({
           <h2 className="audio-title" title={name}>{name}</h2>
           <div className="audio-badges">
             <span className="audio-badge">{ext} Format</span>
-            <span className="audio-badge">
-              {(buffer.byteLength / (1024 * 1024)).toFixed(2)} MB
-            </span>
+            {buffer && (
+              <span className="audio-badge">
+                {(buffer.byteLength / (1024 * 1024)).toFixed(2)} MB
+              </span>
+            )}
             {isPlaying && <span className="audio-badge active">Now Playing</span>}
           </div>
         </div>

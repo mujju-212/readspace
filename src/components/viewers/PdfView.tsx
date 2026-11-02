@@ -39,11 +39,14 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
     try {
       const pdfPage = await doc.getPage(Math.max(1, Math.min(doc.numPages, page)));
       const tc = await pdfPage.getTextContent();
-      const text = tc.items
-        .map((it) => ('str' in (it as any) ? String((it as any).str) : ''))
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      let text = '';
+      for (const it of tc.items) {
+        if ('str' in it) {
+          text += it.str;
+          text += (it as { hasEOL?: boolean }).hasEOL ? '\n' : ' ';
+        }
+      }
+      text = text.replace(/[ \t]+/g, ' ').replace(/\n /g, '\n').trim();
       if (!text) throw new Error('no text');
       const ok = await copyTextToClipboard(text);
       setCopyState(ok ? 'ok' : 'fail');
@@ -243,7 +246,7 @@ function PdfPage({
         await task.promise;
         if (dead || !hostRef.current) { pdfPage.cleanup(); return; }
 
-        // build the page DOM: canvas + optional text layer for selection
+        // build the page DOM: canvas + transparent text layer for mouse selection & copy
         const wrap = document.createElement('div');
         wrap.className = 'pdf-page-inner';
         wrap.style.width = `${vp.width}px`;
@@ -254,12 +257,25 @@ function PdfPage({
         canvas.style.width = `${vp.width}px`;
         canvas.style.height = `${vp.height}px`;
         wrap.appendChild(canvas);
+
+        const textLayerDiv = document.createElement('div');
+        textLayerDiv.className = 'textLayer';
+        textLayerDiv.style.width = `${vp.width}px`;
+        textLayerDiv.style.height = `${vp.height}px`;
+        textLayerDiv.style.setProperty('--scale-factor', String(scale));
+        textLayerDiv.style.setProperty('--total-scale-factor', String(scale));
+        wrap.appendChild(textLayerDiv);
+
         try {
           const pdfjs = await import('pdfjs-dist');
           const TextLayerCtor = (pdfjs as unknown as { TextLayer?: new (o: object) => { render(): Promise<void> } }).TextLayer;
           if (TextLayerCtor) {
             const textContent = await pdfPage.getTextContent();
-            const tl = new TextLayerCtor({ textContentSource: textContent, container: wrap, viewport: vp });
+            const tl = new TextLayerCtor({
+              textContentSource: textContent,
+              container: textLayerDiv,
+              viewport: vp,
+            });
             await tl.render();
           }
         } catch { /* text layer is best-effort */ }

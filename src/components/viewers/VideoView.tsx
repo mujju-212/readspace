@@ -232,9 +232,11 @@ export default function VideoView({
             {videoWidth > 0 && videoHeight > 0 && (
               <span className="video-badge">{videoWidth}×{videoHeight}</span>
             )}
-            <span className="video-badge">
-              {(buffer.byteLength / (1024 * 1024)).toFixed(1)} MB
-            </span>
+            {buffer && (
+              <span className="video-badge">
+                {(buffer.byteLength / (1024 * 1024)).toFixed(1)} MB
+              </span>
+            )}
           </div>
         </div>
       </div>

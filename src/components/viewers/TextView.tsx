@@ -64,24 +64,47 @@ const EXT_TO_LANG: Record<string, { lang: string; label: string }> = {
 
 /** Copy arbitrary text using the Clipboard API with a textarea fallback. */
 export async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
+  // 1. Modern asynchronous Clipboard API (secure contexts / localhost)
+  if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
       await navigator.clipboard.writeText(text);
       return true;
+    } catch {
+      // If permission denied or document not focused, fall through to fallback
     }
-  } catch {
-    // fall through to the legacy path
   }
+
+  // 2. Legacy execCommand('copy') fallback for HTTP / non-secure contexts and older browsers
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
+    ta.setAttribute('readonly', '');
+    ta.style.contain = 'strict';
+    ta.style.position = 'absolute';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.padding = '0';
+    ta.style.border = 'none';
+    ta.style.outline = 'none';
+    ta.style.fontSize = '12pt';
     document.body.appendChild(ta);
-    ta.focus();
+
+    const selection = document.getSelection();
+    const originalRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+
+    ta.focus({ preventScroll: true });
     ta.select();
+    ta.setSelectionRange(0, text.length);
+
     const ok = document.execCommand('copy');
-    ta.remove();
+    document.body.removeChild(ta);
+
+    if (selection && originalRange) {
+      selection.removeAllRanges();
+      selection.addRange(originalRange);
+    }
     return ok;
   } catch {
     return false;

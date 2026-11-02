@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import JSZip from 'jszip';
+import { copyTextToClipboard } from './TextView';
 
 interface SlideParagraph {
   text: string;
@@ -52,6 +53,7 @@ export default function PptxView({
   const [showThumbnails, setShowThumbnails] = useState(true);
   const [showNotes, setShowNotes] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [copiedSlide, setCopiedSlide] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Parse PPTX archive using JSZip
@@ -387,6 +389,26 @@ export default function PptxView({
               📝 Notes
             </button>
           )}
+
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={async () => {
+              const text = [
+                activeSlide.title,
+                ...activeSlide.paragraphs.map((p) => p.text),
+                activeSlide.notes ? `Notes:\n${activeSlide.notes}` : '',
+              ]
+                .filter(Boolean)
+                .join('\n\n');
+              const ok = await copyTextToClipboard(text);
+              setCopiedSlide(ok);
+              if (ok) setTimeout(() => setCopiedSlide(false), 1600);
+            }}
+            title="Copy current slide text"
+          >
+            {copiedSlide ? 'Copied!' : 'Copy slide'}
+          </button>
 
           <button
             type="button"
