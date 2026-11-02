@@ -32,6 +32,9 @@ data/
 uploads/
 scratch/
 -w
+*.xml
+*.txt
+.cloud-attachments/
 
 .vercel
 .env*.local

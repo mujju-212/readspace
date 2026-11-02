@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ZoomIn, ZoomOut } from '../Icons';
+import { copyTextToClipboard } from './TextView';
 
 /** pdf.js worker wiring — done once, lazily (TRD §9: dynamic import). */
 let workerReady: Promise<void> | null = null;
@@ -29,8 +30,28 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
   const [page, setPage] = useState(1);
   const [fit, setFit] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [containerW, setContainerW] = useState(800);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleCopyCurrentPage = useCallback(async () => {
+    if (!doc) return;
+    try {
+      const pdfPage = await doc.getPage(Math.max(1, Math.min(doc.numPages, page)));
+      const tc = await pdfPage.getTextContent();
+      const text = tc.items
+        .map((it) => ('str' in (it as any) ? String((it as any).str) : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!text) throw new Error('no text');
+      const ok = await copyTextToClipboard(text);
+      setCopyState(ok ? 'ok' : 'fail');
+    } catch {
+      setCopyState('fail');
+    }
+    setTimeout(() => setCopyState('idle'), 1600);
+  }, [doc, page]);
 
   useEffect(() => {
     let dead = false;
@@ -139,6 +160,14 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
             <ZoomIn size={14} />
           </button>
         </div>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          title="Copy this page's text"
+          onClick={handleCopyCurrentPage}
+        >
+          {copyState === 'ok' ? 'Copied!' : copyState === 'fail' ? 'No text found' : 'Copy page'}
+        </button>
       </div>
       <div className="pdf-scroll" ref={scrollRef}>
         {Array.from({ length: doc.numPages }, (_, i) => (

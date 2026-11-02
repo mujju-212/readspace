@@ -62,9 +62,36 @@ const EXT_TO_LANG: Record<string, { lang: string; label: string }> = {
   patch: { lang: 'diff', label: 'Patch' },
 };
 
+/** Copy arbitrary text using the Clipboard API with a textarea fallback. */
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to the legacy path
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Text and code viewer with syntax highlighting (FR-27): wrap toggle + big-file guard. */
 export default function TextView({ text, ext }: { text: string; ext?: string }) {
   const [wrap, setWrap] = useState(true);
+  const [copied, setCopied] = useState(false);
   const big = text.length > 2_000_000;
 
   const info = ext ? EXT_TO_LANG[ext.toLowerCase()] : undefined;
@@ -100,6 +127,20 @@ export default function TextView({ text, ext }: { text: string; ext?: string }) 
         >
           <Wrap size={13} /> Wrap
         </button>
+        {!big && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            title="Copy full text"
+            onClick={async () => {
+              const ok = await copyTextToClipboard(text);
+              setCopied(ok);
+              if (ok) setTimeout(() => setCopied(false), 1600);
+            }}
+          >
+            {copied ? 'Copied!' : 'Copy text'}
+          </button>
+        )}
       </div>
       <div className="reader text-body">
         {highlightedHtml ? (
