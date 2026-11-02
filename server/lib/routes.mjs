@@ -258,14 +258,15 @@ const sid = await createSession(user._id);
 
         if (targetUrl.startsWith('com.readspace.app://') || targetUrl.startsWith('readspace://')) {
           const qPart = targetUrl.includes('?') ? '?' + targetUrl.split('?')[1] : '';
-          intentUrl = `intent://auth${qPart}#Intent;scheme=com.readspace.app;package=com.readspace.app;end`;
+          const scheme = targetUrl.startsWith('readspace://') ? 'readspace' : 'com.readspace.app';
+          intentUrl = `intent://auth${qPart}#Intent;scheme=${scheme};package=com.readspace.app;end`;
         }
       } else {
         const sep = back.includes('?') ? '&' : '?';
         targetUrl = `${baseUrl(req)}${back}${sep}signedin=1${pending.withDrive ? '&drive=1' : ''}&token=${sid}`;
       }
 
-      const primaryActionUrl = intentUrl || targetUrl;
+      const primaryActionUrl = targetUrl || intentUrl;
 
       const htmlBridge = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing In...</title></head><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f172a;color:#f8fafc;padding:20px;box-sizing:border-box"><div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px 24px;text-align:center;max-width:400px;width:100%"><div style="font-size:36px;margin-bottom:12px">✨</div><p style="font-size:18px;font-weight:700;margin-bottom:8px">Signed in successfully!</p><p style="font-size:14px;color:#94a3b8;margin-bottom:20px">Redirecting to ReadSpace...</p><a id="actionBtn" href="${primaryActionUrl}" style="display:inline-block;width:100%;padding:14px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;box-sizing:border-box;box-shadow:0 4px 12px rgba(37,99,235,0.3)">Return to ReadSpace App</a>${intentUrl ? `<div style="margin-top:14px"><a id="directSchemeBtn" href="${targetUrl}" style="color:#60a5fa;font-size:13px;text-decoration:underline">Trouble opening? Tap direct deep link</a></div>` : ''}</div><script>
 try {
