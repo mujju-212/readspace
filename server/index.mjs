@@ -10,6 +10,7 @@
  */
 import './lib/env.mjs'; // must stay FIRST — loads .env before google.mjs reads creds
 import http from 'node:http';
+import zlib from 'node:zlib';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,3 +1,4 @@
+import { Spinner } from '../Spinner';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ZoomIn, ZoomOut } from '../Icons';
@@ -307,11 +308,4 @@ function PdfPage({
   );
 }
 
-export function Spinner({ label }: { label: string }) {
-  return (
-    <div className="spinner-wrap" role="status" aria-live="polite">
-      <div className="spinner" />
-      <span className="muted">{label}</span>
-    </div>
-  );
-}
+export { Spinner } from '../Spinner';

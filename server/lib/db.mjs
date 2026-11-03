@@ -37,11 +37,27 @@ class JsonCollection {
     this.persist();
     return had;
   }
+  _matches(doc, pred) {
+    if (typeof pred === 'function') return Boolean(pred(doc));
+    if (pred && typeof pred === 'object') {
+      for (const [k, v] of Object.entries(pred)) {
+        if (v === null) {
+          if (doc[k] !== null && doc[k] !== undefined) return false;
+        } else if (doc[k] !== v) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return true;
+  }
   async find(pred) {
-    return [...this.store.values()].filter(pred);
+    if (!pred) return [...this.store.values()];
+    return [...this.store.values()].filter((item) => this._matches(item, pred));
   }
   async findOne(pred) {
-    return [...this.store.values()].find(pred) ?? null;
+    if (!pred) return null;
+    return [...this.store.values()].find((item) => this._matches(item, pred)) ?? null;
   }
 }
 
@@ -87,6 +103,7 @@ class JsonDb {
   };
 
   coll(name) {
+    if (!this.data[name]) this.data[name] = new Map();
     return new JsonCollection(this.data[name], this.persist);
   }
 }
@@ -114,19 +131,26 @@ class MongoCollection {
   }
 
   async find(pred) {
-    const all = await this.collection.find({}).toArray();
-    if (typeof pred === 'function') return all.filter(pred);
-    if (pred && typeof pred === 'object') return await this.collection.find(pred).toArray();
-    return all;
+    if (pred && typeof pred === 'object') {
+      return await this.collection.find(pred).toArray();
+    }
+    if (typeof pred === 'function') {
+      const all = await this.collection.find({}).toArray();
+      return all.filter(pred);
+    }
+    return await this.collection.find({}).toArray();
   }
 
   async findOne(pred) {
-    if (typeof pred === 'function') {
-      const all = await this.collection.find({}).toArray();
-      return all.find(pred) ?? null;
-    }
     if (pred && typeof pred === 'object') {
       return (await this.collection.findOne(pred)) ?? null;
+    }
+    if (typeof pred === 'function') {
+      const cursor = this.collection.find({});
+      for await (const doc of cursor) {
+        if (pred(doc)) return doc;
+      }
+      return null;
     }
     return null;
   }

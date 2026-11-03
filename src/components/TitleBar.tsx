@@ -70,8 +70,10 @@ export function TitleBar({ onQuickOpen, onOpenDrive, onHome }: { onQuickOpen: ()
           <span className="brand-name">ReadSpace</span>
         </button>
         {provider && (
-          <span className="ws-label" title={`Workspace: ${provider.id}`}>
-            {provider.label}
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span className="ws-label" title={`Workspace: ${provider.id}`}>
+              {provider.label}
+            </span>
             <button
               type="button"
               className="ws-close-btn"

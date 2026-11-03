@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth/mammoth.browser.min.js';
-import { Spinner } from './PdfView';
+import { Spinner } from '../Spinner';
 import { copyTextToClipboard } from './TextView';
 
 /**

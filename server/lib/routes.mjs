@@ -85,7 +85,7 @@ function publicUser(user) {
 }
 
 async function getConnection(userId) {
-  const conn = await db.coll('connections').findOne((c) => c.userId === userId && !c.revokedAt);
+  const conn = await db.coll('connections').findOne({ userId, revokedAt: null });
   return conn ?? null;
 }
 
@@ -174,7 +174,7 @@ export async function handleApi(req, res, pathname) {
       const identity = await identifyUser(tokens);
 
       // upsert user by stable subject (AUTH-01) or existing email
-      let user = await db.coll('users').findOne((u) => u.googleSubject === identity.subject);
+      let user = await db.coll('users').findOne({ googleSubject: identity.subject });
       if (!user && identity.email) {
         user = await db.coll('users').findOne((u) => u.email && u.email.toLowerCase() === identity.email.toLowerCase());
       }
@@ -212,7 +212,7 @@ export async function handleApi(req, res, pathname) {
         const existing = (await getConnection(user._id)) || (await db.coll('connections').findOne((c) => c.googleAccountId === identity.subject || (c.email && c.email.toLowerCase() === identity.email.toLowerCase())));
         if (tokens.refresh_token) {
           const { ciphertext, keyVersion } = encryptSecret(tokens.refresh_token);
-          for (const other of await db.coll('connections').find((c) => c.userId === user._id)) {
+          for (const other of await db.coll('connections').find({ userId: user._id })) {
             if (!existing || other._id !== existing._id) await db.coll('connections').delete(other._id);
           }
           await db.coll('connections').put(existing?._id ?? randomId(12), {
@@ -316,7 +316,7 @@ try {
       // clearly-labelled development sign-in, only available in sandbox mode
       if (googleMode !== 'sandbox') throw httpError(403, 'Demo sign-in is disabled in this deployment', 'demo_disabled');
       const now = nowIso();
-      let user = await db.coll('users').findOne((u) => u.googleSubject === 'demo-user-0001');
+      let user = await db.coll('users').findOne({ googleSubject: 'demo-user-0001' });
       if (!user) {
         user = { _id: randomId(12), googleSubject: 'demo-user-0001', email: 'demo.user@gmail.com', displayName: 'Demo User', avatarUrl: '', createdAt: now, updatedAt: now, lastLoginAt: now };
         await db.coll('users').put(user._id, user);
@@ -530,7 +530,7 @@ try {
       if (!sameOriginOk(req)) throw httpError(403, 'Cross-origin request blocked', 'csrf');
       const user = await requireUser(req);
       if (!user) throw httpError(401, 'Sign in required', 'unauthenticated');
-      for (const conn of await db.coll('connections').find((c) => c.userId === user._id)) {
+      for (const conn of await db.coll('connections').find({ userId: user._id })) {
         try {
           const accessToken = await getAccessToken(conn);
           await driveRevoke(accessToken);
@@ -774,11 +774,11 @@ try {
     if (method === 'GET' && pathname === '/api/workspaces') {
       const user = await requireUser(req);
       if (!user) throw httpError(401, 'Sign in required', 'unauthenticated');
-      const all = await db.coll('workspaces').find((w) => w.userId === user._id);
+      const all = await db.coll('workspaces').find({ userId: user._id });
       all.sort((a, b) => (a.lastOpenedAt < b.lastOpenedAt ? 1 : -1));
       const withSessions = await Promise.all(all.map(async (w) => ({
         ...w,
-        session: await db.coll('workspaceSessions').findOne((s) => s.userId === user._id && s.workspaceKey === w.key) ?? null,
+        session: await db.coll('workspaceSessions').findOne({ userId: user._id, workspaceKey: w.key }) ?? null,
       })));
       return json(res, 200, { workspaces: withSessions });
     }
@@ -791,7 +791,7 @@ try {
       const key = String(body.key ?? '').slice(0, 200);
       if (!key) throw httpError(400, 'Missing workspace key', 'bad_request');
       const now = nowIso();
-      let ws = await db.coll('workspaces').findOne((w) => w.userId === user._id && w.key === key);
+      let ws = await db.coll('workspaces').findOne({ userId: user._id, key });
       if (!ws) {
         ws = { _id: randomId(12), userId: user._id, key, createdAt: now };
       }
@@ -831,8 +831,8 @@ try {
       const user = await requireUser(req);
       if (!user) throw httpError(401, 'Sign in required', 'unauthenticated');
       const key = decodeURIComponent(pathname.split('/')[3]);
-      const ws = await db.coll('workspaces').findOne((w) => w.userId === user._id && w.key === key);
-      const sess = await db.coll('workspaceSessions').findOne((s) => s.userId === user._id && s.workspaceKey === key);
+      const ws = await db.coll('workspaces').findOne({ userId: user._id, key });
+      const sess = await db.coll('workspaceSessions').findOne({ userId: user._id, workspaceKey: key });
       return json(res, 200, { workspace: ws, session: sess });
     }
 

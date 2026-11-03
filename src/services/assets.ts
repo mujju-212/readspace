@@ -51,14 +51,7 @@ export function mimeForRef(ref: string, buf?: ArrayBuffer): string {
   return mime;
 }
 
-export function downloadText(name: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-}
+export { countWords, downloadText } from './textUtils';
 
 function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').slice(0, 64) || 'section';
@@ -244,9 +237,6 @@ export async function buildSandboxedHtml(
   return { html: '<!doctype html>' + doc.documentElement.outerHTML };
 }
 
-export function countWords(text: string): number {
-  const m = text.trim().match(/\S+/g);
-  return m ? m.length : 0;
-}
+
 
 export { basename };

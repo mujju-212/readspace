@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspace } from '../stores/workspace';
 import { useTabs } from '../stores/tabs';
 import { useSettings } from '../stores/settings';
@@ -63,13 +63,13 @@ export function Explorer() {
     return allFiles.filter((f) => f.path.toLowerCase().includes(q)).slice(0, 300);
   }, [filter, allFiles]);
 
-  const activate = (entry: FsEntry) => {
+  const activate = useCallback((entry: FsEntry) => {
     if (entry.kind === 'directory') void toggleDir(entry.path);
     else {
       useWorkspace.getState().select(entry.path);
       openPath(entry.path, { ext: entry.ext });
     }
-  };
+  }, [toggleDir, openPath]);
 
   const onContainerKeyDown = (e: React.KeyboardEvent) => {
     const container = containerRef.current;
@@ -81,30 +81,15 @@ export function Explorer() {
     } else if (e.key === 'ArrowUp' && idx > 0) {
       e.preventDefault(); rows[idx - 1].focus();
     } else if (e.key === 'ArrowRight' && idx >= 0) {
-      const path = rows[idx].dataset.path!;
-      if (!useWorkspace.getState().expanded[path]) { e.preventDefault(); void useWorkspace.getState().toggleDir(path); }
+      const p = rows[idx].dataset.path!;
+      if (!useWorkspace.getState().expanded[p]) { e.preventDefault(); void useWorkspace.getState().toggleDir(p); }
     } else if (e.key === 'ArrowLeft' && idx >= 0) {
-      const path = rows[idx].dataset.path!;
-      if (useWorkspace.getState().expanded[path]) { e.preventDefault(); void useWorkspace.getState().toggleDir(path); }
+      const p = rows[idx].dataset.path!;
+      if (useWorkspace.getState().expanded[p]) { e.preventDefault(); void useWorkspace.getState().toggleDir(p); }
     } else if (e.key === 'Enter' && idx >= 0) {
       e.preventDefault(); rows[idx].click();
     }
   };
-
-  const renderNode = (entry: FsEntry, depth: number): React.ReactNode => (
-    <TreeNodeItem
-      key={entry.path}
-      entry={entry}
-      depth={depth}
-      showHidden={showHidden}
-      cloudSync={cloudSync}
-      provider={provider}
-      selected={selected}
-      activate={activate}
-      openPath={openPath}
-      renderNode={renderNode}
-    />
-  );
 
   return (
     <div className="explorer">
@@ -298,14 +283,26 @@ export function Explorer() {
             ))
           )
         ) : (
-          !busy && (entries[''] ?? []).map((e) => renderNode(e, 0))
+          !busy && (entries[''] ?? []).map((e) => (
+            <TreeNodeItem
+              key={e.path}
+              entry={e}
+              depth={0}
+              showHidden={showHidden}
+              cloudSync={cloudSync}
+              provider={provider}
+              selected={selected}
+              activate={activate}
+              openPath={openPath}
+            />
+          ))
         )}
       </div>
     </div>
   );
 }
 
-function TreeNodeItem({
+const TreeNodeItem = React.memo(function TreeNodeItem({
   entry,
   depth,
   showHidden,
@@ -314,7 +311,6 @@ function TreeNodeItem({
   selected,
   activate,
   openPath,
-  renderNode,
 }: {
   entry: FsEntry;
   depth: number;
@@ -324,7 +320,6 @@ function TreeNodeItem({
   selected: string | null;
   activate: (entry: FsEntry) => void;
   openPath: (path: string, meta?: any) => void;
-  renderNode: (entry: FsEntry, depth: number) => React.ReactNode;
 }) {
   const isOpen = useWorkspace((s) => !!s.expanded[entry.path]);
   const children = useWorkspace((s) => s.entries[entry.path]);
@@ -434,7 +429,7 @@ function TreeNodeItem({
               const { pickLocalDestination, downloadFromDrive } = await import('../features/cloud/transfers');
               const cloudP = provider as InstanceType<typeof CloudDriveProvider>;
               try {
-                const meta = await cloudP.metaFor(entry.path);
+                const meta = await (cloudP as any).metaFor(entry.path);
                 if (meta?.id) {
                   const dest = await pickLocalDestination();
                   if (dest === 'cancelled') return;
@@ -463,13 +458,25 @@ function TreeNodeItem({
               (empty)
             </div>
           ) : (
-            children.map((c) => renderNode(c, depth + 1))
+            children.map((c) => (
+              <TreeNodeItem
+                key={c.path}
+                entry={c}
+                depth={depth + 1}
+                showHidden={showHidden}
+                cloudSync={cloudSync}
+                provider={provider}
+                selected={selected}
+                activate={activate}
+                openPath={openPath}
+              />
+            ))
           )}
         </div>
       )}
     </div>
   );
-}
+});
 
 function isVisibleLocal(entry: FsEntry, showHidden: boolean): boolean {
   if (!showHidden && entry.name.startsWith('.')) return false;

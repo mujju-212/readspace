@@ -5,18 +5,18 @@ import { toast } from '../stores/toast';
 import { EDITABLE_RENDERERS, rendererForExt, rendererLabel } from '../services/fs/types';
 import { DriveConflictError } from '../services/fs/cloud';
 import { confirmOptions } from '../stores/confirm';
-import { countWords, downloadText } from '../services/assets';
+import { countWords, downloadText } from '../services/textUtils';
 import { clearDraft, loadDraft, scheduleDraft } from '../services/persistence';
 import ErrorBoundary from './ErrorBoundary';
-import MarkdownView from './viewers/MarkdownView';
 import TextView from './viewers/TextView';
 import HtmlView from './viewers/HtmlView';
 import ImageView from './viewers/ImageView';
 import UnsupportedView from './viewers/UnsupportedView';
 import PlainEditor from './editors/PlainEditor';
-import { Spinner } from './viewers/PdfView';
+import { Spinner } from './Spinner';
 import { Eye, Pencil, Split } from './Icons';
 
+const MarkdownView = React.lazy(() => import('./viewers/MarkdownView'));
 const PdfView = React.lazy(() => import('./viewers/PdfView'));
 const DocxView = React.lazy(() => import('./viewers/DocxView'));
 const AudioView = React.lazy(() => import('./viewers/AudioView'));
@@ -234,7 +234,11 @@ export function ViewerHost({ tab }: { tab: Tab }) {
   const renderPreview = () => {
     switch (rendererId) {
       case 'markdown':
-        return <ErrorBoundary><MarkdownView text={text} path={tab.path} /></ErrorBoundary>;
+        return (
+          <Suspense fallback={<Spinner label="Loading markdown engine…" />}>
+            <ErrorBoundary><MarkdownView text={text} path={tab.path} /></ErrorBoundary>
+          </Suspense>
+        );
       case 'html':
         return <ErrorBoundary><HtmlView text={text} path={tab.path} /></ErrorBoundary>;
       case 'text':
