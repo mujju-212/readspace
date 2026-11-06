@@ -666,10 +666,28 @@ try {
     if (method === 'POST' && pathname === '/api/drive/files') {
       if (!sameOriginOk(req)) throw httpError(403, 'Cross-origin request blocked', 'csrf');
       const { user, accessToken } = await withDrive(req);
-      const parent = url.searchParams.get('parentId') ?? 'root';
+      let parent = url.searchParams.get('parentId') ?? 'root';
       const name = url.searchParams.get('name') ?? 'untitled';
       const mimeType = url.searchParams.get('mimeType') ?? 'application/octet-stream';
       const content = await readBody(req, 48 * 1024 * 1024);
+
+      if (parent.startsWith('create:')) {
+        const folderName = parent.slice('create:'.length).trim() || 'Workspace';
+        try {
+          const list = await driveListFiles(accessToken, { parent: 'root' });
+          const existing = (list.files || []).find((f) => f.name === folderName && f.mimeType === 'application/vnd.google-apps.folder');
+          if (existing) {
+            parent = existing.id;
+          } else {
+            const folder = await driveCreateFile(accessToken, { parent: 'root', name: folderName, mimeType: 'application/vnd.google-apps.folder' }, '');
+            parent = folder.id;
+          }
+        } catch (err) {
+          console.warn('[drive] Failed to resolve virtual folder for upload:', err);
+          parent = 'root';
+        }
+      }
+
       const file = await driveCreateFile(accessToken, { parent, name, mimeType }, content);
       invalidateDriveCache(user._id);
       return json(res, 201, { file });

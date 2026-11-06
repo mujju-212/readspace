@@ -20,7 +20,7 @@ export async function getOrResolveDriveDest(workspaceId: string, workspaceLabel:
 
   // 2. Search Drive root for a folder with the same name as the workspace
   try {
-    const { files } = await api.driveList('root', workspaceLabel);
+    const { files } = await api.driveList('root');
     const match = files.find(
       (f) => f.name.toLowerCase() === workspaceLabel.toLowerCase() && f.mimeType === 'application/vnd.google-apps.folder',
     );

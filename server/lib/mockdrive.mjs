@@ -326,7 +326,25 @@ export function mockDriveExport(userId, id, resourceKey) {
 }
 
 export async function mockDriveCreate(userId, { parent = 'root', name, mimeType }, content) {
-  return entry(await addFile(userId, parent === 'root' ? null : parent, name, mimeType || 'application/octet-stream', content));
+  let p = parent === 'root' ? null : parent;
+  if (p && p.startsWith('create:')) {
+    const fn = p.slice('create:'.length).trim() || 'Workspace';
+    const s = storeFor(userId);
+    let existing;
+    for (const f of s.files.values()) {
+      if (f.name === fn && f.mimeType === FOLDER_MIME && (!f.parents || f.parents.length === 0)) {
+        existing = f;
+        break;
+      }
+    }
+    if (existing) {
+      p = existing.id;
+    } else {
+      const created = await addFile(userId, null, fn, FOLDER_MIME, '');
+      p = created.id;
+    }
+  }
+  return entry(await addFile(userId, p, name, mimeType || 'application/octet-stream', content));
 }
 
 export function mockDriveUpdate(userId, id, content, expectedModifiedTime) {

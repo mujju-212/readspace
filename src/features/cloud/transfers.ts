@@ -48,12 +48,32 @@ export async function uploadFilesToDrive(files: File[], dest: { id: string; name
   const jobId = t.startJob('upload', `Upload to “${dest.name}”`, files.map((f) => ({ name: f.name, size: f.size })));
   let ok = 0;
   let failed = 0;
+  let targetFolderId = dest.id;
+  if (targetFolderId.startsWith('create:')) {
+    const folderName = dest.name || targetFolderId.slice('create:'.length);
+    try {
+      const { files: existingFiles } = await api.driveList('root');
+      const existing = existingFiles.find((f) => f.name === folderName && f.mimeType === 'application/vnd.google-apps.folder');
+      if (existing) {
+        targetFolderId = existing.id;
+      } else {
+        const { file } = await api.driveUpload('root', folderName, 'application/vnd.google-apps.folder', '');
+        targetFolderId = file.id;
+      }
+      dest.id = targetFolderId;
+    } catch (e) {
+      console.warn('Failed to resolve target folder in Drive:', e);
+      targetFolderId = 'root';
+      dest.id = 'root';
+    }
+  }
+
   for (let i = 0; i < files.length; i++) {
     if (useTransfers.getState().isCancelled(jobId)) break;
     useTransfers.getState().setItem(jobId, i, { status: 'active' });
     try {
       const buf = await files[i].arrayBuffer();
-      const { file } = await api.driveUpload(dest.id, files[i].name, files[i].type || mimeFromName(files[i].name), buf);
+      const { file } = await api.driveUpload(targetFolderId, files[i].name, files[i].type || mimeFromName(files[i].name), buf);
       useTransfers.getState().setItem(jobId, i, { status: 'succeeded' });
       void file;
       ok++;
@@ -97,6 +117,8 @@ export async function uploadCandidatesToDrive(
       } catch { /* ignore */ }
     } catch (e) {
       console.warn('Failed to resolve or create target folder in Drive:', e);
+      baseFolderId = 'root';
+      dest.id = 'root';
     }
   }
 

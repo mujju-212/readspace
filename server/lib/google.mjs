@@ -13,6 +13,7 @@ const REAL = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const API = 'https://www.googleapis.com/drive/v3';
+const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 export const BASE_SCOPES = ['openid', 'email', 'profile'];
@@ -281,22 +282,57 @@ export async function driveChanges(accessToken, pageToken) {
 
 export async function driveCreateFile(accessToken, { parent = 'root', name, mimeType }, content) {
   if (googleMode === 'sandbox') return mockDriveCreate('demo-user-0001', { parent, name, mimeType }, content);
-  // multipart upload (metadata + media) — fine for moderate sizes on functions
+
+  const parents = parent && parent !== 'root' ? [parent] : ['root'];
+
+  // Google Drive folders are metadata-only entities (POST to /drive/v3/files, not upload endpoint)
+  if (mimeType === 'application/vnd.google-apps.folder') {
+    const meta = {
+      name: name || 'untitled folder',
+      mimeType: 'application/vnd.google-apps.folder',
+      parents,
+    };
+    const res = await driveFetch(accessToken, `/files?${qs({ fields: 'id,name,mimeType,size,modifiedTime,parents' })}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify(meta),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      const msg = json.error?.message ?? 'create folder failed';
+      throw Object.assign(new Error(msg), { status: res.status, codeName: 'drive_create_folder_failed' });
+    }
+    return json;
+  }
+
+  // Regular file upload with media content (must use https://www.googleapis.com/upload/drive/v3/files)
   const boundary = 'rs3' + Math.random().toString(36).slice(2);
-  const meta = JSON.stringify({ name, parents: [parent], mimeType });
+  const meta = JSON.stringify({
+    name: name || 'untitled',
+    parents,
+    mimeType: mimeType || 'application/octet-stream',
+  });
+  const fileBuf = Buffer.isBuffer(content) ? content : Buffer.from(content ?? '', 'utf8');
   const body = Buffer.concat([
     Buffer.from(`--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`),
     Buffer.from(`--${boundary}\r\ncontent-type: ${mimeType || 'application/octet-stream'}\r\n\r\n`),
-    Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8'),
+    fileBuf,
     Buffer.from(`\r\n--${boundary}--`),
   ]);
-  const res = await driveFetch(accessToken, `/files?${qs({ uploadType: 'multipart', fields: 'id,name,mimeType,size,modifiedTime' })}`, {
+
+  const res = await fetch(`${UPLOAD_API}/files?${qs({ uploadType: 'multipart', fields: 'id,name,mimeType,size,modifiedTime,parents' })}`, {
     method: 'POST',
-    headers: { 'content-type': `multipart/related; boundary=${boundary}` },
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': `multipart/related; boundary=${boundary}`,
+    },
     body: new Uint8Array(body),
   });
   const json = await res.json();
-  if (!res.ok) throw Object.assign(new Error(json.error?.message ?? 'upload failed'), { status: res.status, codeName: 'drive_upload_failed' });
+  if (!res.ok) {
+    const msg = json.error?.message ?? 'upload failed';
+    throw Object.assign(new Error(msg), { status: res.status, codeName: 'drive_upload_failed' });
+  }
   return json;
 }
 
@@ -310,19 +346,26 @@ export async function driveUpdateFile(accessToken, id, content, expectedModified
   }
   const boundary = 'rs3' + Math.random().toString(36).slice(2);
   const meta = JSON.stringify({});
+  const fileBuf = Buffer.isBuffer(content) ? content : Buffer.from(content ?? '', 'utf8');
   const body = Buffer.concat([
     Buffer.from(`--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`),
     Buffer.from(`--${boundary}\r\ncontent-type: application/octet-stream\r\n\r\n`),
-    Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8'),
+    fileBuf,
     Buffer.from(`\r\n--${boundary}--`),
   ]);
-  const res = await driveFetch(accessToken, `/files/${encodeURIComponent(id)}?${qs({ uploadType: 'multipart', fields: 'id,name,mimeType,size,modifiedTime' })}`, {
+  const res = await fetch(`${UPLOAD_API}/files/${encodeURIComponent(id)}?${qs({ uploadType: 'multipart', fields: 'id,name,mimeType,size,modifiedTime' })}`, {
     method: 'PATCH',
-    headers: { 'content-type': `multipart/related; boundary=${boundary}` },
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': `multipart/related; boundary=${boundary}`,
+    },
     body: new Uint8Array(body),
   });
   const json = await res.json();
-  if (!res.ok) throw Object.assign(new Error(json.error?.message ?? 'update failed'), { status: res.status, codeName: 'drive_update_failed' });
+  if (!res.ok) {
+    const msg = json.error?.message ?? 'update failed';
+    throw Object.assign(new Error(msg), { status: res.status, codeName: 'drive_update_failed' });
+  }
   return { status: 200, file: json };
 }
 
