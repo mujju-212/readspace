@@ -78,10 +78,10 @@ export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: 
         </button>
       </div>
       {mode === 'curl' ? (
-        <div className="rs-web-book-stage">
-          <div className="rs-web-book-container" style={{ width: 'min(840px, 92vw)', minHeight: '75vh', alignItems: 'flex-start' }}>
+        <div className="rs-web-book-stage" style={{ flex: 1, overflow: 'auto' }}>
+          <div className="rs-web-book-container" style={{ width: 'min(860px, 92vw)', minHeight: '80vh', alignItems: 'flex-start', margin: '20px 0' }}>
             <div className="rs-page-crease" />
-            <div className="reader docx-body" style={{ width: '100%', padding: '30px 36px' }} dangerouslySetInnerHTML={{ __html: html }} />
+            <div className="reader docx-body" style={{ width: '100%', padding: '36px 44px' }} dangerouslySetInnerHTML={{ __html: html }} />
           </div>
         </div>
       ) : (

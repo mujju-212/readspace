@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ZoomIn, ZoomOut } from '../Icons';
 import { copyTextToClipboard } from './TextView';
 import { useSettings } from '../../stores/settings';
+import { BookCurlView, type BookCurlHandle } from './BookCurlView';
 
 /** pdf.js worker wiring — done once, lazily (TRD §9: dynamic import). */
 let workerReady: Promise<void> | null = null;
@@ -34,8 +35,11 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
   const [fit, setFit] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
-  const [containerW, setContainerW] = useState(800);
+  const [viewportDims, setViewportDims] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
+  const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const curlNavRef = useRef<BookCurlHandle>(null);
 
   const handleCopyCurrentPage = useCallback(async () => {
     if (!doc) return;
@@ -82,18 +86,46 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
   }, [buffer]);
 
   useEffect(() => {
-    const el = scrollRef.current;
+    const el = rootRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setContainerW(el.clientWidth));
+    const update = () => {
+      setViewportDims({ w: el.clientWidth, h: el.clientHeight - 42 });
+    };
+    const ro = new ResizeObserver(update);
     ro.observe(el);
-    setContainerW(el.clientWidth);
+    update();
     return () => ro.disconnect();
+  }, [doc]);
+
+  const goToNextPage = useCallback(() => {
+    if (!doc) return;
+    setPage((p) => {
+      const next = Math.min(doc.numPages, p + 1);
+      if (next !== p) {
+        setTurnAnim('next');
+        setTimeout(() => setTurnAnim(null), 300);
+      }
+      return next;
+    });
+  }, [doc]);
+
+  const goToPrevPage = useCallback(() => {
+    if (!doc) return;
+    setPage((p) => {
+      const prev = Math.max(1, p - 1);
+      if (prev !== p) {
+        setTurnAnim('prev');
+        setTimeout(() => setTurnAnim(null), 300);
+      }
+      return prev;
+    });
   }, [doc]);
 
   const scrollToPage = useCallback((n: number) => {
     if (!doc) return;
     const target = Math.max(1, Math.min(doc.numPages, n));
     setPage(target);
+    if (mode === 'curl') return;
     const container = scrollRef.current;
     const el = document.getElementById(`pdf-page-${target}`);
     if (el && container) {
@@ -102,7 +134,7 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
     } else if (el) {
       el.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
-  }, [doc]);
+  }, [doc, mode]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -136,15 +168,17 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
     if (mode !== 'curl') return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-        setPage((p) => Math.min(doc?.numPages ?? 1, p + 1));
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        goToNextPage();
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        setPage((p) => Math.max(1, p - 1));
+        e.preventDefault();
+        goToPrevPage();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, doc?.numPages]);
+  }, [mode, goToNextPage, goToPrevPage]);
 
   if (err) {
     return (
@@ -157,26 +191,91 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
   }
   if (!doc) return <Spinner label="Opening PDF…" />;
 
-  const baseW = Math.max(280, containerW - 48);
-  const targetW = Math.round(fit ? baseW : baseW * zoom);
+  // In 3D book mode, ensure entire page fits comfortably within viewport height & width
+  const aspect = 1.414;
+  const maxAvailableH = Math.max(300, viewportDims.h - 96);
+  const maxAvailableW = Math.max(280, viewportDims.w - 140);
+  const fitBookW = Math.min(maxAvailableW, Math.round(maxAvailableH / aspect));
+
+  const baseW = Math.max(280, viewportDims.w - 48);
+  const targetW = mode === 'curl'
+    ? Math.round(fit ? fitBookW : fitBookW * zoom)
+    : Math.round(fit ? baseW : baseW * zoom);
 
   return (
-    <div className="pdf-root">
+    <div className="pdf-root" ref={rootRef}>
       <div className="pdf-toolbar">
         <span className="pdf-title" title={name}>{name}</span>
         <div className="pdf-nav">
-          <button type="button" className="btn btn-ghost" disabled={page <= 1} onClick={() => scrollToPage(page - 1)} aria-label="Previous page">‹</button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={page <= 1}
+            onClick={() => {
+              if (mode === 'curl') {
+                void curlNavRef.current?.turnBackward();
+              } else {
+                scrollToPage(page - 1);
+              }
+            }}
+            aria-label="Previous page"
+          >
+            ‹
+          </button>
           <span className="pdf-pageinfo">Page {page} / {doc.numPages}</span>
-          <button type="button" className="btn btn-ghost" disabled={page >= doc.numPages} onClick={() => scrollToPage(page + 1)} aria-label="Next page">›</button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={page >= doc.numPages}
+            onClick={() => {
+              if (mode === 'curl') {
+                void curlNavRef.current?.turnForward();
+              } else {
+                scrollToPage(page + 1);
+              }
+            }}
+            aria-label="Next page"
+          >
+            ›
+          </button>
         </div>
         <div className="pdf-zoom">
-          <button type="button" className="icon-btn" aria-label="Zoom out" onClick={() => { setFit(false); setZoom((z) => Math.max(0.4, Math.round((z - 0.2) * 100) / 100)); }}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Zoom out"
+            onClick={() => {
+              setFit(false);
+              setZoom((z) => Math.max(0.4, Math.round((z - 0.15) * 100) / 100));
+            }}
+          >
             <ZoomOut size={14} />
           </button>
-          <button type="button" className={`btn btn-ghost${fit ? ' on' : ''}`} onClick={() => setFit((f) => !f)} title="Toggle fit-width">
-            {fit ? 'Fit width' : `${Math.round(zoom * 100)}%`}
+          <button
+            type="button"
+            className={`btn btn-ghost${fit ? ' on' : ''}`}
+            onClick={() => {
+              if (fit) {
+                setFit(false);
+                setZoom(1);
+              } else {
+                setFit(true);
+                setZoom(1);
+              }
+            }}
+            title="Toggle fit page"
+          >
+            {fit ? 'Fit' : `${Math.round(zoom * 100)}%`}
           </button>
-          <button type="button" className="icon-btn" aria-label="Zoom in" onClick={() => { setFit(false); setZoom((z) => Math.min(4, Math.round((z + 0.2) * 100) / 100)); }}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Zoom in"
+            onClick={() => {
+              setFit(false);
+              setZoom((z) => Math.min(3, Math.round((z + 0.15) * 100) / 100));
+            }}
+          >
             <ZoomIn size={14} />
           </button>
         </div>
@@ -199,39 +298,15 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
       </div>
 
       {mode === 'curl' ? (
-        <div className="rs-web-book-stage">
-          <div className="rs-web-book-container">
-            <div className="rs-page-crease" />
-            <PdfPage
-              key={`page-${page}@${targetW}`}
-              doc={doc}
-              num={page}
-              targetWidth={targetW}
-              onVisible={setPage}
-            />
-          </div>
-          <div className="rs-web-curl-controls">
-            <button
-              type="button"
-              className="btn btn-ghost rs-curl-btn"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              title="Previous page (ArrowLeft)"
-            >
-              ‹ Previous Page
-            </button>
-            <span className="pdf-pageinfo">Page {page} of {doc.numPages}</span>
-            <button
-              type="button"
-              className="btn btn-ghost rs-curl-btn"
-              disabled={page >= doc.numPages}
-              onClick={() => setPage((p) => Math.min(doc.numPages, p + 1))}
-              title="Next page (ArrowRight)"
-            >
-              Next Page ›
-            </button>
-          </div>
-        </div>
+        <BookCurlView
+          ref={curlNavRef}
+          doc={doc}
+          page={page}
+          setPage={setPage}
+          zoom={zoom}
+          fit={fit}
+          docName={name}
+        />
       ) : (
         <div className="pdf-scroll" ref={scrollRef}>
           {Array.from({ length: doc.numPages }, (_, i) => (
