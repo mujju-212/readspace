@@ -42,7 +42,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
   fontSize: 16,
   lineHeight: 1.7,
   contentWidth: 820,
-  readingMode: 'curl',
+  readingMode: 'scroll',
   nightLight: 0,
   showHidden: false,
   zen: false,

@@ -23,9 +23,9 @@ export function SettingsPopover({ onClose }: { onClose: () => void }) {
 
       <div className="settings-row">
         <label htmlFor="set-mode">Reading mode</label>
-        <select id="set-mode" value={s.readingMode || 'curl'} onChange={(e) => set({ readingMode: e.target.value as 'curl' | 'scroll' })}>
+        <select id="set-mode" value={s.readingMode || 'scroll'} onChange={(e) => set({ readingMode: e.target.value as 'curl' | 'scroll' })}>
+          <option value="scroll">📜 Continuous Scroll (default)</option>
           <option value="curl">📖 3D Page Turn (Books style)</option>
-          <option value="scroll">📜 Continuous Scroll</option>
         </select>
       </div>
 
