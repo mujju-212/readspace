@@ -34,6 +34,7 @@ export default function App() {
   const sidebarVisible = useSettings((s) => s.sidebarVisible);
   const sidebarWidth = useSettings((s) => s.sidebarWidth);
   const zen = useSettings((s) => s.zen);
+  const nightLight = useSettings((s) => s.nightLight);
   // responsive shell (PRD v1.3 §21): mobile = drawer + bottom nav
   const [isMobile, setIsMobile] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 700px)').matches);
   useEffect(() => {
@@ -439,6 +440,19 @@ export default function App() {
       <BackgroundAudioBar />
       <AuthModal />
       <AccountSecurityModal />
+      {/* Google Play Books style Amber Night Light warm filter */}
+      <div
+        className="rs-nightlight-overlay"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          pointerEvents: 'none',
+          backgroundColor: `rgba(255, 150, 10, ${((nightLight || 0) / 100) * 0.42})`,
+          mixBlendMode: 'multiply',
+          zIndex: 99999,
+          transition: 'background-color 0.3s ease',
+        }}
+      />
     </div>
   );
 }

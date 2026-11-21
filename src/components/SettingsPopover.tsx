@@ -22,11 +22,33 @@ export function SettingsPopover({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="settings-row">
+        <label htmlFor="set-mode">Reading mode</label>
+        <select id="set-mode" value={s.readingMode || 'curl'} onChange={(e) => set({ readingMode: e.target.value as 'curl' | 'scroll' })}>
+          <option value="curl">📖 3D Page Turn (Books style)</option>
+          <option value="scroll">📜 Continuous Scroll</option>
+        </select>
+      </div>
+
+      <div className="settings-row">
+        <label htmlFor="set-nightlight">Night Light <b>{(s.nightLight || 0) > 0 ? `${s.nightLight}% Warmth` : 'Off'}</b></label>
+        <input
+          id="set-nightlight"
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={s.nightLight || 0}
+          onChange={(e) => set({ nightLight: Number(e.target.value) })}
+        />
+      </div>
+
+      <div className="settings-row">
         <label htmlFor="set-font">Reader font</label>
         <select id="set-font" value={s.font} onChange={(e) => set({ font: e.target.value as FontChoice })}>
           <option value="sans">Sans (system)</option>
           <option value="serif">Serif</option>
           <option value="mono">Monospace</option>
+          <option value="dyslexic">OpenDyslexic</option>
         </select>
       </div>
 

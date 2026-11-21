@@ -31,6 +31,7 @@ Thumbs.db
 data/
 uploads/
 scratch/
+other/
 -w
 *.xml
 *.txt

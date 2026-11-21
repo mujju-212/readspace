@@ -2,12 +2,13 @@ import { create } from 'zustand';
 
 /** Theme choices (PRD v1.3 §20): Ice Blue is the default. */
 export type ThemeName = 'ice' | 'light' | 'dark' | 'sepia' | 'system';
-export type FontChoice = 'sans' | 'serif' | 'mono';
+export type FontChoice = 'sans' | 'serif' | 'mono' | 'dyslexic';
 
 export const FONT_FAMILIES: Record<FontChoice, string> = {
   sans: "'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif",
   serif: "Georgia, 'Iowan Old Style', 'Times New Roman', serif",
   mono: "ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace",
+  dyslexic: "'OpenDyslexic', 'Comic Sans MS', cursive, sans-serif",
 };
 
 interface SettingsState {
@@ -16,6 +17,8 @@ interface SettingsState {
   fontSize: number;      // px
   lineHeight: number;
   contentWidth: number;  // px, max width of the reader column
+  readingMode: 'curl' | 'scroll';
+  nightLight: number;    // 0 to 100
   showHidden: boolean;
   zen: boolean;
   sidebarWidth: number;
@@ -39,6 +42,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   fontSize: 16,
   lineHeight: 1.7,
   contentWidth: 820,
+  readingMode: 'curl',
+  nightLight: 0,
   showHidden: false,
   zen: false,
   sidebarWidth: 260,
