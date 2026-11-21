@@ -10,6 +10,7 @@ import { useSettings } from '../../stores/settings';
  * sanitised, then styled with the reader typography.
  */
 export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: string }) {
+  const mode = useSettings((s) => s.readingMode);
   const [html, setHtml] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -52,8 +53,6 @@ export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: 
     setCopied(ok);
     if (ok) setTimeout(() => setCopied(false), 1600);
   };
-
-  const mode = useSettings((s) => s.readingMode);
 
   return (
     <div className="docx-view">

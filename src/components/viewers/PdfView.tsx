@@ -132,20 +132,6 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
     };
   }, [doc]);
 
-  if (err) {
-    return (
-      <div className="empty-state">
-        <div className="empty-icon">⚠️</div>
-        <h2>Couldn't open this PDF</h2>
-        <p className="muted">{err}</p>
-      </div>
-    );
-  }
-  if (!doc) return <Spinner label="Opening PDF…" />;
-
-  const baseW = Math.max(280, containerW - 48);
-  const targetW = Math.round(fit ? baseW : baseW * zoom);
-
   useEffect(() => {
     if (mode !== 'curl') return;
     const onKey = (e: KeyboardEvent) => {
@@ -159,6 +145,20 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [mode, doc?.numPages]);
+
+  if (err) {
+    return (
+      <div className="empty-state">
+        <div className="empty-icon">⚠️</div>
+        <h2>Couldn't open this PDF</h2>
+        <p className="muted">{err}</p>
+      </div>
+    );
+  }
+  if (!doc) return <Spinner label="Opening PDF…" />;
+
+  const baseW = Math.max(280, containerW - 48);
+  const targetW = Math.round(fit ? baseW : baseW * zoom);
 
   return (
     <div className="pdf-root">
