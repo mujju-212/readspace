@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import mammoth from 'mammoth/mammoth.browser.min.js';
 import { Spinner } from '../Spinner';
 import { copyTextToClipboard } from './TextView';
+import { useSettings } from '../../stores/settings';
 
 /**
  * Word document viewer (FR-24): mammoth converts DOCX → semantic HTML,
@@ -52,6 +53,8 @@ export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: 
     if (ok) setTimeout(() => setCopied(false), 1600);
   };
 
+  const mode = useSettings((s) => s.readingMode);
+
   return (
     <div className="docx-view">
       <div className="text-toolbar">
@@ -66,10 +69,27 @@ export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: 
         >
           {copied ? 'Copied!' : 'Copy text'}
         </button>
+        <button
+          type="button"
+          className={`btn btn-ghost${mode === 'curl' ? ' on' : ''}`}
+          title="Toggle 3D Page Turn vs Continuous Scroll"
+          onClick={() => useSettings.getState().set({ readingMode: mode === 'curl' ? 'scroll' : 'curl' })}
+        >
+          {mode === 'curl' ? '📖 3D Mode' : '📜 Scroll Mode'}
+        </button>
       </div>
-      <div className="docx-scroll">
-        <div className="reader docx-body" dangerouslySetInnerHTML={{ __html: html }} />
-      </div>
+      {mode === 'curl' ? (
+        <div className="rs-web-book-stage">
+          <div className="rs-web-book-container" style={{ width: 'min(840px, 92vw)', minHeight: '75vh', alignItems: 'flex-start' }}>
+            <div className="rs-page-crease" />
+            <div className="reader docx-body" style={{ width: '100%', padding: '30px 36px' }} dangerouslySetInnerHTML={{ __html: html }} />
+          </div>
+        </div>
+      ) : (
+        <div className="docx-scroll">
+          <div className="reader docx-body" dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
+      )}
     </div>
   );
 }

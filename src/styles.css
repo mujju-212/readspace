@@ -1028,6 +1028,63 @@ kbd {
 }
 .zen-exit:hover, .zen-exit:focus-visible { opacity: 1; }
 
+/* ---------- 3D Book Mode for Web Viewers ---------- */
+.rs-web-book-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  perspective: 2000px;
+  background: var(--pdf-bg);
+  overflow: auto;
+  padding: 20px 20px 30px;
+  min-height: 0;
+}
+.rs-web-book-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border-radius: 6px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.2), 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border);
+  padding: 12px;
+  max-width: 95vw;
+  max-height: 85vh;
+}
+.rs-web-book-container .pdf-page {
+  margin: 0;
+  box-shadow: none;
+}
+.rs-web-curl-controls {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--panel);
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.rs-curl-btn {
+  font-weight: 600;
+  font-size: 13px;
+}
+.rs-page-crease {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 24px;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.04) 40%, transparent 100%);
+  z-index: 10;
+}
+html[data-theme='dark'] .rs-page-crease {
+  background: linear-gradient(to right, rgba(0,0,0,0.4) 0%, rgba(255,180,50,0.08) 50%, transparent 100%);
+}
+
 /* small screens: the divider still works but the sidebar starts narrow */
 @media (max-width: 760px) {
   .reader { padding: 30px 20px 90px; }

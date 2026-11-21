@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ZoomIn, ZoomOut } from '../Icons';
 import { copyTextToClipboard } from './TextView';
+import { useSettings } from '../../stores/settings';
 
 /** pdf.js worker wiring — done once, lazily (TRD §9: dynamic import). */
 let workerReady: Promise<void> | null = null;
@@ -26,6 +27,7 @@ function ensureWorker(): Promise<void> {
  * (best effort — silently skipped if unsupported).
  */
 export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: string }) {
+  const mode = useSettings((s) => s.readingMode);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -144,6 +146,20 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
   const baseW = Math.max(280, containerW - 48);
   const targetW = Math.round(fit ? baseW : baseW * zoom);
 
+  useEffect(() => {
+    if (mode !== 'curl') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        setPage((p) => Math.min(doc?.numPages ?? 1, p + 1));
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        setPage((p) => Math.max(1, p - 1));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, doc?.numPages]);
+
   return (
     <div className="pdf-root">
       <div className="pdf-toolbar">
@@ -172,18 +188,63 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
         >
           {copyState === 'ok' ? 'Copied!' : copyState === 'fail' ? 'No text found' : 'Copy page'}
         </button>
+        <button
+          type="button"
+          className={`btn btn-ghost${mode === 'curl' ? ' on' : ''}`}
+          title="Toggle 3D Page Turn vs Continuous Scroll"
+          onClick={() => useSettings.getState().set({ readingMode: mode === 'curl' ? 'scroll' : 'curl' })}
+        >
+          {mode === 'curl' ? '📖 3D Mode' : '📜 Scroll Mode'}
+        </button>
       </div>
-      <div className="pdf-scroll" ref={scrollRef}>
-        {Array.from({ length: doc.numPages }, (_, i) => (
-          <PdfPage
-            key={`${i + 1}@${targetW}`}
-            doc={doc}
-            num={i + 1}
-            targetWidth={targetW}
-            onVisible={setPage}
-          />
-        ))}
-      </div>
+
+      {mode === 'curl' ? (
+        <div className="rs-web-book-stage">
+          <div className="rs-web-book-container">
+            <div className="rs-page-crease" />
+            <PdfPage
+              key={`page-${page}@${targetW}`}
+              doc={doc}
+              num={page}
+              targetWidth={targetW}
+              onVisible={setPage}
+            />
+          </div>
+          <div className="rs-web-curl-controls">
+            <button
+              type="button"
+              className="btn btn-ghost rs-curl-btn"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              title="Previous page (ArrowLeft)"
+            >
+              ‹ Previous Page
+            </button>
+            <span className="pdf-pageinfo">Page {page} of {doc.numPages}</span>
+            <button
+              type="button"
+              className="btn btn-ghost rs-curl-btn"
+              disabled={page >= doc.numPages}
+              onClick={() => setPage((p) => Math.min(doc.numPages, p + 1))}
+              title="Next page (ArrowRight)"
+            >
+              Next Page ›
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="pdf-scroll" ref={scrollRef}>
+          {Array.from({ length: doc.numPages }, (_, i) => (
+            <PdfPage
+              key={`${i + 1}@${targetW}`}
+              doc={doc}
+              num={i + 1}
+              targetWidth={targetW}
+              onVisible={setPage}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
