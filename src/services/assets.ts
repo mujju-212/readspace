@@ -59,7 +59,7 @@ function slugify(s: string): string {
 
 /* ---------- markdown pipeline (TRD §4.1) ---------- */
 
-marked.use({ gfm: true, breaks: false });
+marked.use({ gfm: true, breaks: true });
 
 export interface RenderedMarkdown { html: string; blobUrls: string[] }
 

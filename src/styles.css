@@ -431,6 +431,11 @@ kbd {
 /* ---------- viewer / content ---------- */
 .viewer { height: 100%; display: flex; flex-direction: column; position: relative; }
 .viewer-scroll { flex: 1; overflow: auto; min-height: 0; }
+.viewer:has(.rs-book-stage) .viewer-scroll {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
 .mode-toggle {
   position: absolute;
@@ -572,9 +577,9 @@ kbd {
 .html-frame { flex: 1; border: none; width: 100%; background: #fff; }
 
 /* when the floating Preview/Edit toggle is present, keep toolbar buttons clear of it */
-.viewer:has(.mode-toggle) .text-toolbar { padding-right: 252px; }
+.viewer:has(.mode-toggle) :is(.text-toolbar, .pdf-toolbar) { padding-right: 252px; }
 @media (max-width: 900px) {
-  .viewer:has(.mode-toggle) .text-toolbar { padding-right: 4px; padding-top: 40px; flex-wrap: wrap; }
+  .viewer:has(.mode-toggle) :is(.text-toolbar, .pdf-toolbar) { padding-right: 4px; padding-top: 40px; flex-wrap: wrap; }
 }
 
 /* ---------- pdf viewer ---------- */
@@ -1069,8 +1074,6 @@ kbd {
   overflow: hidden;
   background: var(--pdf-bg);
   min-height: 0;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 /* Scroll area inside book stage: smooth scrolling with overflow-safe margin:auto centering */
@@ -1082,9 +1085,20 @@ kbd {
   overflow: auto;
   display: flex;
   box-sizing: border-box;
-  padding: 20px 24px 84px;
+  padding: 16px 20px 60px;
   perspective: 2200px;
   perspective-origin: 50% 50%;
+  cursor: default;
+}
+
+.rs-book-scroll-area.mode-hand {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.rs-book-scroll-area.mode-hand.is-grabbing {
+  cursor: grabbing !important;
 }
 
 /* 3D Book Wrapper with realistic book thickness edges */
@@ -1099,6 +1113,26 @@ kbd {
   transform-style: preserve-3d;
   filter: drop-shadow(0 20px 48px rgba(0, 0, 0, 0.35)) drop-shadow(0 4px 14px rgba(0, 0, 0, 0.15));
   transition: width 0.18s ease-out, height 0.18s ease-out;
+}
+
+/* Selectable Text Layer in 3D Book View */
+.rs-book-text-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 20;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.rs-book-text-layer :is(span, br) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.rs-book-text-layer ::selection {
+  background: rgba(59, 130, 246, 0.38);
+  color: transparent;
 }
 
 /* Left edge stack thickness (read pages) */
@@ -1283,26 +1317,30 @@ html[data-theme='dark'] .rs-page-base {
   pointer-events: none;
 }
 
-/* Forward Page Turn Animation (Page N -> N+1) */
+/* Realistic 3D Paper Curl Animation (Google Play Books Inspired) */
 @keyframes curlFlipForward {
   0% {
-    transform: perspective(2200px) rotateY(0deg) translateZ(0);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transform: perspective(2200px) rotateY(0deg) rotateZ(0deg) translateZ(0) scaleX(1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   }
-  25% {
-    transform: perspective(2200px) rotateY(-38deg) translateZ(36px) skewY(-2deg);
-    box-shadow: -15px 12px 30px rgba(0, 0, 0, 0.3);
+  20% {
+    /* Right edge lifts & peels inwards with cylindrical arc compression */
+    transform: perspective(2200px) rotateY(-28deg) rotateZ(-1.2deg) translateZ(40px) scaleX(0.97) skewY(-1.8deg);
+    box-shadow: -10px 12px 24px rgba(0, 0, 0, 0.28);
   }
-  55% {
-    transform: perspective(2200px) rotateY(-88deg) translateZ(48px) skewY(-0.8deg);
-    box-shadow: -28px 18px 45px rgba(0, 0, 0, 0.38);
+  52% {
+    /* Peak curl cylinder: arched high above book with maximum depth */
+    transform: perspective(2200px) rotateY(-84deg) rotateZ(-2.6deg) translateZ(66px) scaleX(0.88) skewY(-3deg);
+    box-shadow: -24px 18px 40px rgba(0, 0, 0, 0.38);
   }
   80% {
-    transform: perspective(2200px) rotateY(-138deg) translateZ(32px) skewY(1.2deg);
-    box-shadow: -18px 14px 30px rgba(0, 0, 0, 0.28);
+    /* Rolling into spine crease */
+    transform: perspective(2200px) rotateY(-144deg) rotateZ(-1deg) translateZ(36px) scaleX(0.95) skewY(-1.2deg);
+    box-shadow: -12px 10px 22px rgba(0, 0, 0, 0.22);
   }
   100% {
-    transform: perspective(2200px) rotateY(-180deg) translateZ(0);
+    /* Landing flat on left side */
+    transform: perspective(2200px) rotateY(-180deg) rotateZ(0deg) translateZ(0) scaleX(1) skewY(0deg);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
 }
@@ -1310,33 +1348,33 @@ html[data-theme='dark'] .rs-page-base {
 /* Backward Page Turn Animation (Page N -> N-1) */
 @keyframes curlFlipBackward {
   0% {
-    transform: perspective(2200px) rotateY(-180deg) translateZ(0);
+    transform: perspective(2200px) rotateY(-180deg) rotateZ(0deg) translateZ(0) scaleX(1) skewY(0deg);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
-  25% {
-    transform: perspective(2200px) rotateY(-142deg) translateZ(32px) skewY(1.2deg);
-    box-shadow: -18px 14px 30px rgba(0, 0, 0, 0.28);
+  20% {
+    transform: perspective(2200px) rotateY(-144deg) rotateZ(-1deg) translateZ(36px) scaleX(0.95) skewY(-1.2deg);
+    box-shadow: -12px 10px 22px rgba(0, 0, 0, 0.22);
   }
-  55% {
-    transform: perspective(2200px) rotateY(-92deg) translateZ(48px) skewY(-0.8deg);
-    box-shadow: -28px 18px 45px rgba(0, 0, 0, 0.38);
+  52% {
+    transform: perspective(2200px) rotateY(-84deg) rotateZ(-2.6deg) translateZ(66px) scaleX(0.88) skewY(-3deg);
+    box-shadow: -24px 18px 40px rgba(0, 0, 0, 0.38);
   }
   80% {
-    transform: perspective(2200px) rotateY(-42deg) translateZ(36px) skewY(-2deg);
-    box-shadow: -15px 12px 30px rgba(0, 0, 0, 0.3);
+    transform: perspective(2200px) rotateY(-28deg) rotateZ(-1.2deg) translateZ(40px) scaleX(0.97) skewY(-1.8deg);
+    box-shadow: -10px 12px 24px rgba(0, 0, 0, 0.28);
   }
   100% {
-    transform: perspective(2200px) rotateY(0deg) translateZ(0);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transform: perspective(2200px) rotateY(0deg) rotateZ(0deg) translateZ(0) scaleX(1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   }
 }
 
 .rs-curl-leaf.rs-curl-forward {
-  animation: curlFlipForward 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: curlFlipForward 0.58s cubic-bezier(0.25, 0.95, 0.35, 1) forwards;
 }
 
 .rs-curl-leaf.rs-curl-backward {
-  animation: curlFlipBackward 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: curlFlipBackward 0.58s cubic-bezier(0.25, 0.95, 0.35, 1) forwards;
 }
 
 /* Front & Back Faces of Curling Leaf */
@@ -1463,23 +1501,30 @@ html[data-theme='dark'] .rs-leaf-back {
   border-color: transparent transparent var(--accent) transparent;
 }
 
-/* Hotzones for intuitive left/right page turns */
+/* Hotzones for intuitive edge page turns (narrow 28px margin so text is selectable) */
 .rs-hotzone-left,
 .rs-hotzone-right {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 14%;
-  z-index: 38;
+  width: 28px;
+  z-index: 25;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
 .rs-hotzone-left {
   left: 0;
 }
+.rs-hotzone-left:hover {
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.06), transparent);
+}
 
 .rs-hotzone-right {
   right: 0;
+}
+.rs-hotzone-right:hover {
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.06), transparent);
 }
 
 /* Bottom Controls with Scrubber Slider */
@@ -1641,6 +1686,187 @@ html[data-theme='dark'] .rs-leaf-back {
 }
 html[data-theme='dark'] .rs-page-crease {
   background: linear-gradient(to right, rgba(0,0,0,0.45) 0%, rgba(255,180,50,0.06) 50%, transparent 100%);
+}
+
+/* ---------- HTML Book Page for 3D Reader (Markdown, Docx, Text) ---------- */
+.rs-html-book-page {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 38px 18px 44px;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: var(--reader-fg, #1a1a1a);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme='dark'] .rs-html-book-page {
+  background: #141b2d;
+  color: #e2e8f0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.rs-html-book-page.verso {
+  opacity: 0.18;
+  filter: blur(0.4px);
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+.rs-book-header-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 11.5px;
+  color: var(--muted);
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+html[data-theme='dark'] .rs-book-header-line {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.rs-book-running-title {
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.rs-book-running-page {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+/* Authentic book page typography (Google Play Books style) */
+.rs-html-page-article {
+  flex: 1 1 auto;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+  padding: 0 !important;
+  margin: 0 !important;
+  max-width: 100% !important;
+  font-size: var(--reader-size, 16px);
+  line-height: var(--reader-line, 1.68);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+}
+
+html[data-theme='dark'] .rs-html-page-article {
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.rs-html-page-article::-webkit-scrollbar {
+  width: 4px;
+}
+
+.rs-html-page-article::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+}
+
+html[data-theme='dark'] .rs-html-page-article::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.rs-html-page-article :is(h1, h2, h3, h4) {
+  margin-top: 0.45em;
+  margin-bottom: 0.25em;
+  line-height: 1.3;
+}
+
+.rs-html-page-article h1 {
+  font-size: 1.42em;
+  font-weight: 700;
+}
+
+.rs-html-page-article h2 {
+  font-size: 1.26em;
+  font-weight: 650;
+}
+
+.rs-html-page-article h3 {
+  font-size: 1.14em;
+  font-weight: 600;
+}
+
+.rs-html-page-article p {
+  margin-top: 0.25em;
+  margin-bottom: 0.48em;
+  line-height: 1.68;
+}
+
+.rs-html-page-article ul,
+.rs-html-page-article ol {
+  margin: 0.3em 0 0.5em;
+  padding-left: 22px;
+}
+
+.rs-html-page-article li {
+  margin-bottom: 0.25em;
+  line-height: 1.62;
+}
+
+.rs-html-page-article pre {
+  margin: 0.45em 0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  font-size: 0.88em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+html[data-theme='dark'] .rs-html-page-article pre {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rs-html-page-article table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.45em 0;
+  font-size: 0.9em;
+}
+
+.rs-html-page-article th,
+.rs-html-page-article td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+}
+
+.rs-html-page-article blockquote {
+  margin: 0.4em 0;
+  padding: 6px 14px;
+  border-left: 3px solid var(--accent);
+  background: rgba(59, 130, 246, 0.04);
+  font-size: 0.92em;
+}
+
+.rs-book-footer-line {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 6px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+html[data-theme='dark'] .rs-book-footer-line {
+  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 /* small screens: the divider still works but the sidebar starts narrow */

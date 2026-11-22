@@ -34,6 +34,7 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
   const [page, setPage] = useState(1);
   const [fit, setFit] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const [toolMode, setToolMode] = useState<'select' | 'hand'>('select');
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [viewportDims, setViewportDims] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
   const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
@@ -281,6 +282,18 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
         </div>
         <button
           type="button"
+          className={`btn btn-ghost${toolMode === 'hand' ? ' on' : ''}`}
+          title={
+            toolMode === 'hand'
+              ? 'Drag Scroll active: Click and drag anywhere to pan document'
+              : 'Text Select active: Click and drag over text to select and copy'
+          }
+          onClick={() => setToolMode((m) => (m === 'hand' ? 'select' : 'hand'))}
+        >
+          {toolMode === 'hand' ? '✋ Drag Scroll' : '👆 Select Text'}
+        </button>
+        <button
+          type="button"
           className="btn btn-ghost"
           title="Copy this page's text"
           onClick={handleCopyCurrentPage}
@@ -306,6 +319,8 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
           zoom={zoom}
           fit={fit}
           docName={name}
+          toolMode={toolMode}
+          setToolMode={setToolMode}
         />
       ) : (
         <div className="pdf-scroll" ref={scrollRef}>

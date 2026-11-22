@@ -20,6 +20,8 @@ interface BookCurlViewProps {
   zoom?: number;
   fit?: boolean;
   docName: string;
+  toolMode?: 'select' | 'hand';
+  setToolMode?: (mode: 'select' | 'hand') => void;
 }
 
 /** Synthesize a soft paper rustle sound using Web Audio API (zero audio files needed). */
@@ -90,7 +92,7 @@ function cloneCanvasVerso(src: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(function BookCurlView(
-  { doc, page, setPage, zoom = 1, fit = true, docName },
+  { doc, page, setPage, zoom = 1, fit = true, docName, toolMode = 'select', setToolMode },
   ref,
 ) {
   const [aspect, setAspect] = useState(1.414);
@@ -107,13 +109,16 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
   });
 
   const canvasCache = useRef<Map<number, HTMLCanvasElement>>(new Map());
+  const textContentCache = useRef<Map<number, unknown>>(new Map());
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const baseRef = useRef<HTMLDivElement>(null);
+  const textLayerHostRef = useRef<HTMLDivElement>(null);
   const leafFrontRef = useRef<HTMLDivElement>(null);
   const leafBackRef = useRef<HTMLDivElement>(null);
   const isTurningRef = useRef(false);
   const prevPageRef = useRef(page);
+  const bookWRef = useRef(500);
 
   // Measure available scroll area dimensions with ResizeObserver for true responsive fit
   useEffect(() => {
@@ -180,16 +185,66 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     [doc, fit, zoom],
   );
 
+  // Render text layer for text selection & copy in 3D book mode
+  const renderTextLayer = useCallback(
+    async (pNum: number, currentBookW: number) => {
+      const host = textLayerHostRef.current;
+      if (!host || pNum < 1 || pNum > doc.numPages) return;
+
+      try {
+        const pdfPage = await doc.getPage(pNum);
+        const vp1 = pdfPage.getViewport({ scale: 1 });
+        const scale = currentBookW / vp1.width;
+        const vp = pdfPage.getViewport({ scale });
+
+        let textContent = textContentCache.current.get(pNum);
+        if (!textContent) {
+          textContent = await pdfPage.getTextContent();
+          textContentCache.current.set(pNum, textContent);
+        }
+
+        const pdfjs = await import('pdfjs-dist');
+        const TextLayerCtor = (
+          pdfjs as unknown as {
+            TextLayer?: new (o: object) => { render(): Promise<void> };
+          }
+        ).TextLayer;
+
+        if (TextLayerCtor && host) {
+          host.replaceChildren();
+          host.style.width = '100%';
+          host.style.height = '100%';
+          host.style.setProperty('--scale-factor', String(scale));
+          host.style.setProperty('--total-scale-factor', String(scale));
+
+          const tl = new TextLayerCtor({
+            textContentSource: textContent,
+            container: host,
+            viewport: vp,
+          });
+          await tl.render();
+        }
+      } catch (err) {
+        console.warn('[BookCurlView] failed to render textLayer:', err);
+      }
+    },
+    [doc],
+  );
+
   // Clear cache when document or zoom changes
   useEffect(() => {
     canvasCache.current.clear();
+    textContentCache.current.clear();
     void (async () => {
       const cur = await renderPdfPage(page);
       if (cur && baseRef.current && !isTurningRef.current) {
         baseRef.current.replaceChildren(cloneCanvas(cur));
       }
+      if (!isTurningRef.current) {
+        void renderTextLayer(page, bookWRef.current);
+      }
     })();
-  }, [doc, fit, zoom, renderPdfPage, page]);
+  }, [doc, fit, zoom, renderPdfPage, renderTextLayer, page]);
 
   // When returning to Fit, gently reset scroll to top
   useEffect(() => {
@@ -205,6 +260,11 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
 
     const from = page;
     const to = page + 1;
+
+    // Clear text layer while turning so it doesn't float over the curling leaf
+    if (textLayerHostRef.current) {
+      textLayerHostRef.current.replaceChildren();
+    }
 
     // Ensure destination page canvas is ready
     const [fromCanvas, toCanvas] = await Promise.all([
@@ -236,14 +296,15 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     playPaperTurnSound();
     setTurnState({ active: true, dir: 'next', fromPage: from, toPage: to });
 
-    // Wait for the 3D curl animation to complete (~500ms)
+    // Wait for the realistic 3D curl animation to complete (~580ms)
     setTimeout(() => {
       setPage(to);
       prevPageRef.current = to;
       setTurnState({ active: false, dir: 'next', fromPage: to, toPage: to });
       isTurningRef.current = false;
-    }, 500);
-  }, [doc.numPages, page, renderPdfPage, setPage]);
+      void renderTextLayer(to, bookWRef.current);
+    }, 580);
+  }, [doc.numPages, page, renderPdfPage, renderTextLayer, setPage]);
 
   // Execute 3D Page Turn Backward (Page N -> N-1)
   const turnBackward = useCallback(async () => {
@@ -252,6 +313,10 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
 
     const from = page;
     const to = page - 1;
+
+    if (textLayerHostRef.current) {
+      textLayerHostRef.current.replaceChildren();
+    }
 
     const [fromCanvas, toCanvas] = await Promise.all([
       renderPdfPage(from),
@@ -289,8 +354,9 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
       }
       setTurnState({ active: false, dir: 'prev', fromPage: to, toPage: to });
       isTurningRef.current = false;
-    }, 500);
-  }, [page, renderPdfPage, setPage]);
+      void renderTextLayer(to, bookWRef.current);
+    }, 580);
+  }, [page, renderPdfPage, renderTextLayer, setPage]);
 
   // Expose turn handles to parent via ref
   useImperativeHandle(ref, () => ({
@@ -368,6 +434,79 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
 
   const bookW = Math.max(200, Math.round(fit ? fitBaseW : fitBaseW * zoom));
   const bookH = Math.max(280, Math.round(fit ? fitBaseH : fitBaseH * zoom));
+  bookWRef.current = bookW;
+
+  // Drag Scrolling (Pan) controller & Horizontal Swipe Gesture
+  const isDraggingScroll = useRef(false);
+  const dragScrollStart = useRef({ x: 0, y: 0, left: 0, top: 0 });
+  const [isGrabbing, setIsGrabbing] = useState(false);
+  const swipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button, input, .rs-corner-hint, .rs-web-curl-controls')) return;
+
+    swipeStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+
+    const isDesk = !(e.target as HTMLElement).closest('.rs-book-container');
+    const isHand = toolMode === 'hand';
+    const isMiddle = e.button === 1;
+
+    if (isHand || isDesk || isMiddle) {
+      if (scrollAreaRef.current) {
+        isDraggingScroll.current = true;
+        dragScrollStart.current = {
+          x: e.clientX,
+          y: e.clientY,
+          left: scrollAreaRef.current.scrollLeft,
+          top: scrollAreaRef.current.scrollTop,
+        };
+        setIsGrabbing(true);
+        e.preventDefault();
+      }
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDraggingScroll.current && scrollAreaRef.current) {
+      const dx = e.clientX - dragScrollStart.current.x;
+      const dy = e.clientY - dragScrollStart.current.y;
+      scrollAreaRef.current.scrollLeft = dragScrollStart.current.left - dx;
+      scrollAreaRef.current.scrollTop = dragScrollStart.current.top - dy;
+    }
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDraggingScroll.current) {
+      isDraggingScroll.current = false;
+      setIsGrabbing(false);
+    }
+
+    if (swipeStartRef.current) {
+      const dx = e.clientX - swipeStartRef.current.x;
+      const dy = Math.abs(e.clientY - swipeStartRef.current.y);
+      const elapsed = Date.now() - swipeStartRef.current.time;
+
+      // Horizontal swipe to turn page
+      if (Math.abs(dx) > 50 && dy < 120 && elapsed < 800 && !turnState.active) {
+        if (dx < 0 && page < doc.numPages) {
+          void turnForward();
+        } else if (dx > 0 && page > 1) {
+          void turnBackward();
+        }
+      }
+      swipeStartRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    const onUp = () => {
+      isDraggingScroll.current = false;
+      setIsGrabbing(false);
+      swipeStartRef.current = null;
+    };
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, []);
 
   return (
     <div className="rs-book-stage">
@@ -394,8 +533,16 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
         ›
       </button>
 
-      {/* Overflow-Safe Scrollable Area with margin:auto centering (Zero cutoff on zoom!) */}
-      <div className="rs-book-scroll-area" ref={scrollAreaRef}>
+      {/* Overflow-Safe Scrollable Area with Drag Scrolling & Panning */}
+      <div
+        className={`rs-book-scroll-area${toolMode === 'hand' ? ' mode-hand' : ''}${
+          isGrabbing ? ' is-grabbing' : ''
+        }`}
+        ref={scrollAreaRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
         <div
           className="rs-book-wrapper"
           style={{
@@ -416,9 +563,16 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
             {/* Running Spine / Gutter Crease Shadow */}
             <div className="rs-book-spine" />
 
-            {/* Underneath Base Layer (Visible when idle & revealed under turning leaf) */}
+            {/* Underneath Base Layer with Selectable TextLayer */}
             <div className="rs-page-base">
               <div className="rs-canvas-host" ref={baseRef} />
+              <div
+                className="textLayer rs-book-text-layer"
+                ref={textLayerHostRef}
+                style={{
+                  pointerEvents: turnState.active || toolMode === 'hand' ? 'none' : 'auto',
+                }}
+              />
               {turnState.active && <div className="rs-under-shadow" />}
             </div>
 

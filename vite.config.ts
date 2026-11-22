@@ -6,6 +6,9 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    watch: {
+      ignored: ['**/other/**', '**/readspace_app/**', '**/*.dex'],
+    },
     // allow the sandboxed preview proxy host
     allowedHosts: true,
     // forward backend routes to the one-process server (npm run serve) so
