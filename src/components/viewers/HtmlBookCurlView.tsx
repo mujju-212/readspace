@@ -8,6 +8,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { paginateHtml, paginatePlainText } from '../../services/htmlPaginator';
+import { useSettings, FONT_FAMILIES } from '../../stores/settings';
 
 export interface HtmlBookCurlHandle {
   turnForward: () => Promise<void>;
@@ -63,6 +64,21 @@ function playPaperTurnSound() {
   }
 }
 
+function extractPlainText(html: string): string {
+  if (!html) return '';
+  if (typeof document === 'undefined') {
+    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('[data-rs-repeated-header]').forEach((el) => el.remove());
+  return (div.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function extractSnippet(html: string): string {
+  return extractPlainText(html).slice(0, 48);
+}
+
 export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewProps>(
   function HtmlBookCurlView(
     {
@@ -76,62 +92,234 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
       fit = true,
       docName,
       toolMode = 'select',
-      setToolMode,
       className = '',
       isCode = false,
     },
     ref,
   ) {
+    const font = useSettings((s) => s.font);
+    const fontSize = useSettings((s) => s.fontSize);
+    const lineHeight = useSettings((s) => s.lineHeight);
+    const zen = useSettings((s) => s.zen);
+
     const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const pageBoxRef = useRef<HTMLDivElement>(null);
+    const headerRef = useRef<HTMLDivElement>(null);
+    const footerRef = useRef<HTMLDivElement>(null);
+
     const [stageSize, setStageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+    const [measuredArticle, setMeasuredArticle] = useState<{ w: number; h: number } | null>(null);
+    const [imgTick, setImgTick] = useState(0);
+    const [fontsTick, setFontsTick] = useState(0);
+    const imgDimsRef = useRef<Map<string, { w: number; h: number }>>(new Map());
+
+    useEffect(() => {
+      let alive = true;
+      if (typeof document !== 'undefined' && document.fonts?.ready) {
+        void document.fonts.ready.then(() => {
+          if (alive) setFontsTick((t) => t + 1);
+        });
+      }
+      return () => {
+        alive = false;
+      };
+    }, []);
 
     // Responsive Book Sizing (authentic trade hardcover proportions ~1.30 aspect ratio)
     const aspect = 1.30;
     const availH = stageSize.h > 0 ? stageSize.h : 720;
     const availW = stageSize.w > 0 ? stageSize.w - 40 : 660;
 
-    let fitBaseH = Math.max(520, Math.min(availH - 16, 840));
+    let fitBaseH = Math.max(380, Math.min(availH - 16, 840));
     let fitBaseW = Math.round(fitBaseH / aspect);
     if (fitBaseW > availW - 32) {
-      fitBaseW = availW - 32;
+      fitBaseW = Math.max(260, availW - 32);
       fitBaseH = Math.round(fitBaseW * aspect);
     }
 
-    const bookW = Math.max(340, Math.round(fit ? fitBaseW : fitBaseW * zoom));
-    const bookH = Math.max(460, Math.round(fit ? fitBaseH : fitBaseH * zoom));
+    const effectiveZoom = fit ? 1 : zoom;
+    const bookW = Math.max(260, Math.round(fitBaseW * effectiveZoom));
+    const bookH = Math.max(340, Math.round(fitBaseH * effectiveZoom));
 
-    const articleW = Math.max(260, fitBaseW - 82);
-    const articleH = Math.max(320, fitBaseH - 84);
+    // Exact logical article dimensions (unaffected by optical zoom transform)
+    const articleW = measuredArticle ? measuredArticle.w : Math.max(180, fitBaseW - 82);
+    const articleH = measuredArticle ? measuredArticle.h : Math.max(220, fitBaseH - 112);
 
-    // Dynamically paginate rawHtml or rawText to exact visual container dimensions
+    // Preload image dimensions in rawHtml so paginator measures real image heights
+    useEffect(() => {
+      if (!rawHtml || !rawHtml.includes('<img')) return;
+      let alive = true;
+      const doc = new DOMParser().parseFromString(`<body>${rawHtml}</body>`, 'text/html');
+      const imgs = Array.from(doc.querySelectorAll('img'));
+      const pending: Promise<void>[] = [];
+
+      for (const img of imgs) {
+        const src = img.getAttribute('src') || '';
+        if (!src || imgDimsRef.current.has(src)) continue;
+        pending.push(
+          new Promise<void>((resolve) => {
+            const loader = new Image();
+            const done = () => {
+              if (loader.naturalWidth > 0 && loader.naturalHeight > 0) {
+                imgDimsRef.current.set(src, {
+                  w: loader.naturalWidth,
+                  h: loader.naturalHeight,
+                });
+              }
+              resolve();
+            };
+            loader.onload = done;
+            loader.onerror = () => resolve();
+            loader.src = src;
+            setTimeout(resolve, 1500);
+          }),
+        );
+      }
+
+      if (pending.length > 0) {
+        void Promise.all(pending).then(() => {
+          if (alive) setImgTick((t) => t + 1);
+        });
+      }
+      return () => {
+        alive = false;
+      };
+    }, [rawHtml]);
+
+    // Inject known aspect-ratio hints onto <img> tags before pagination
+    const preparedHtml = useMemo(() => {
+      if (!rawHtml) return rawHtml;
+      if (!rawHtml.includes('<img') || imgDimsRef.current.size === 0) return rawHtml;
+      const doc = new DOMParser().parseFromString(`<body>${rawHtml}</body>`, 'text/html');
+      let changed = false;
+      doc.querySelectorAll('img').forEach((img) => {
+        const src = img.getAttribute('src') || '';
+        const dims = imgDimsRef.current.get(src);
+        if (dims && !img.getAttribute('width') && !img.getAttribute('height')) {
+          img.style.aspectRatio = `${dims.w} / ${dims.h}`;
+          if (!img.style.width) img.style.width = `${Math.min(dims.w, articleW)}px`;
+          changed = true;
+        }
+      });
+      return changed ? doc.body.innerHTML : rawHtml;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rawHtml, imgTick, articleW]);
+
+    const articleClass = `reader ${isCode ? 'text-body' : className || 'md-body'} rs-html-page-article`;
+    const isLayoutReady = stageSize.w > 0 && measuredArticle !== null;
+
+    // Dynamically paginate preparedHtml or rawText once real container dimensions are measured
     const pages = useMemo(() => {
-      if (rawHtml) {
-        return paginateHtml(rawHtml, {
+      if (!isLayoutReady && (preparedHtml || rawText)) {
+        return [''];
+      }
+      if (preparedHtml) {
+        return paginateHtml(preparedHtml, {
           contentWidth: articleW,
           maxContentHeight: articleH,
-          safetyBuffer: 32,
+          safetyBuffer: 10,
+          fontSize: `${fontSize}px`,
+          lineHeight: String(lineHeight),
+          fontFamily: FONT_FAMILIES[font],
+          articleClassName: articleClass,
         });
       }
       if (rawText) {
+        const approxLineH = Math.max(18, Math.round(fontSize * lineHeight));
         return paginatePlainText(rawText, {
-          maxLinesPerPage: Math.max(16, Math.floor((articleH - 32) / 26)),
+          maxLinesPerPage: Math.max(10, Math.floor((articleH - 16) / approxLineH)),
         });
       }
       return pagesProp || [''];
-    }, [rawHtml, rawText, pagesProp, articleW, articleH]);
+    }, [
+      isLayoutReady,
+      preparedHtml,
+      rawText,
+      pagesProp,
+      articleW,
+      articleH,
+      font,
+      fontSize,
+      lineHeight,
+      articleClass,
+      fontsTick,
+    ]);
 
     const totalPages = Math.max(1, pages.length);
     const safePage = Math.max(1, Math.min(totalPages, page));
 
-    useEffect(() => {
-      onTotalPagesChange?.(totalPages);
-    }, [totalPages, onTotalPagesChange]);
+    // Preserve reading position across re-pagination (settings / resize / Zen / image load)
+    const prevDocNameRef = useRef(docName);
+    const hasPaginatedOnceRef = useRef(false);
+    const prevPagesRef = useRef<string[]>(pages);
+    const anchorRef = useRef<{ snippet: string; ratio: number }>({ snippet: '', ratio: 0 });
 
     useEffect(() => {
-      if (page > totalPages) {
+      if (prevDocNameRef.current !== docName) {
+        prevDocNameRef.current = docName;
+        hasPaginatedOnceRef.current = false;
+      }
+      if (!isLayoutReady) return;
+
+      if (!hasPaginatedOnceRef.current) {
+        hasPaginatedOnceRef.current = true;
+        prevPagesRef.current = pages;
+        anchorRef.current = {
+          snippet: extractSnippet(pages[safePage - 1] || ''),
+          ratio: totalPages > 1 ? (safePage - 1) / (totalPages - 1) : 0,
+        };
+        return;
+      }
+
+      if (prevPagesRef.current !== pages) {
+        const { snippet, ratio } = anchorRef.current;
+        prevPagesRef.current = pages;
+        if (snippet && snippet.length >= 8) {
+          const needle = snippet.slice(0, 28);
+          const expectedIdx = Math.round(ratio * Math.max(0, pages.length - 1));
+          let bestIdx = -1;
+          let bestDist = Infinity;
+          for (let i = 0; i < pages.length; i++) {
+            if (extractPlainText(pages[i]).includes(needle)) {
+              const dist = Math.abs(i - expectedIdx);
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = i;
+              }
+            }
+          }
+          if (bestIdx >= 0) {
+            const target = bestIdx + 1;
+            if (target !== safePage) setPage(target);
+            return;
+          }
+        }
+        const fallbackTarget = Math.max(
+          1,
+          Math.min(pages.length, Math.round(ratio * Math.max(0, pages.length - 1)) + 1),
+        );
+        if (fallbackTarget !== safePage) setPage(fallbackTarget);
+      }
+    }, [isLayoutReady, pages, docName, safePage, totalPages, setPage]);
+
+    useEffect(() => {
+      if (!isLayoutReady || !hasPaginatedOnceRef.current) return;
+      anchorRef.current = {
+        snippet: extractSnippet(pages[safePage - 1] || ''),
+        ratio: totalPages > 1 ? (safePage - 1) / (totalPages - 1) : 0,
+      };
+    }, [isLayoutReady, safePage, totalPages, pages]);
+
+    useEffect(() => {
+      if (!isLayoutReady) return;
+      onTotalPagesChange?.(totalPages);
+    }, [isLayoutReady, totalPages, onTotalPagesChange]);
+
+    useEffect(() => {
+      if (isLayoutReady && page > totalPages) {
         setPage(totalPages);
       }
-    }, [page, totalPages, setPage]);
+    }, [isLayoutReady, page, totalPages, setPage]);
 
     const [turnState, setTurnState] = useState<{
       active: boolean;
@@ -146,7 +334,13 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
     });
 
     const isTurningRef = useRef(false);
-    const prevPageRef = useRef(safePage);
+    const turnTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+      return () => {
+        if (turnTimerRef.current !== null) window.clearTimeout(turnTimerRef.current);
+      };
+    }, []);
 
     // Measure available scroll area dimensions with ResizeObserver for true responsive fit
     useEffect(() => {
@@ -160,13 +354,55 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
         const padRight = parseFloat(cs.paddingRight) || 0;
         const availW = Math.max(200, el.clientWidth - padLeft - padRight);
         const availH = Math.max(200, el.clientHeight - padTop - padBottom);
-        setStageSize({ w: availW, h: availH });
+        setStageSize((prev) =>
+          Math.abs(prev.w - availW) >= 2 || Math.abs(prev.h - availH) >= 2
+            ? { w: availW, h: availH }
+            : prev,
+        );
       };
       const ro = new ResizeObserver(update);
       ro.observe(el);
       update();
       return () => ro.disconnect();
-    }, []);
+    }, [zen]);
+
+    // Measure exact logical article box inside .rs-html-book-page (immune to scrollbar width)
+    useEffect(() => {
+      const box = pageBoxRef.current;
+      if (!box || stageSize.w <= 0) return;
+      const measure = () => {
+        const cs = window.getComputedStyle(box);
+        const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+        const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+
+        let headerH = 0;
+        if (headerRef.current) {
+          const hcs = window.getComputedStyle(headerRef.current);
+          headerH =
+            headerRef.current.offsetHeight +
+            (parseFloat(hcs.marginTop) || 0) +
+            (parseFloat(hcs.marginBottom) || 0);
+        }
+        let footerH = 0;
+        if (footerRef.current) {
+          const fcs = window.getComputedStyle(footerRef.current);
+          footerH =
+            footerRef.current.offsetHeight +
+            (parseFloat(fcs.marginTop) || 0) +
+            (parseFloat(fcs.marginBottom) || 0);
+        }
+
+        const w = Math.max(180, Math.floor(box.clientWidth - padX));
+        const h = Math.max(200, Math.floor(box.clientHeight - padY - headerH - footerH));
+        setMeasuredArticle((prev) =>
+          !prev || Math.abs(prev.w - w) >= 2 || Math.abs(prev.h - h) >= 2 ? { w, h } : prev,
+        );
+      };
+      const ro = new ResizeObserver(measure);
+      ro.observe(box);
+      measure();
+      return () => ro.disconnect();
+    }, [stageSize.w, fitBaseW, fitBaseH]);
 
     // When returning to Fit, gently reset scroll to top
     useEffect(() => {
@@ -186,9 +422,8 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
       playPaperTurnSound();
       setTurnState({ active: true, dir: 'next', fromPage: from, toPage: to });
 
-      setTimeout(() => {
+      turnTimerRef.current = window.setTimeout(() => {
         setPage(to);
-        prevPageRef.current = to;
         setTurnState({ active: false, dir: 'next', fromPage: to, toPage: to });
         isTurningRef.current = false;
       }, 580);
@@ -205,9 +440,8 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
       playPaperTurnSound();
       setTurnState({ active: true, dir: 'prev', fromPage: from, toPage: to });
 
-      setTimeout(() => {
+      turnTimerRef.current = window.setTimeout(() => {
         setPage(to);
-        prevPageRef.current = to;
         setTurnState({ active: false, dir: 'prev', fromPage: to, toPage: to });
         isTurningRef.current = false;
       }, 580);
@@ -219,19 +453,6 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
       turnBackward,
     }));
 
-    // Synchronize external page changes (e.g. from top toolbar or slider)
-    useEffect(() => {
-      if (safePage === prevPageRef.current) return;
-      const oldP = prevPageRef.current;
-      prevPageRef.current = safePage;
-
-      if (safePage === oldP + 1 && !isTurningRef.current) {
-        void turnForward();
-      } else if (safePage === oldP - 1 && !isTurningRef.current) {
-        void turnBackward();
-      }
-    }, [safePage, turnForward, turnBackward]);
-
     // Keyboard navigation
     useEffect(() => {
       const handleKey = (e: KeyboardEvent) => {
@@ -242,11 +463,17 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
         } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
           e.preventDefault();
           void turnBackward();
+        } else if (e.key === 'Home' && !turnState.active) {
+          e.preventDefault();
+          setPage(1);
+        } else if (e.key === 'End' && !turnState.active) {
+          e.preventDefault();
+          setPage(totalPages);
         }
       };
       window.addEventListener('keydown', handleKey);
       return () => window.removeEventListener('keydown', handleKey);
-    }, [turnForward, turnBackward]);
+    }, [turnForward, turnBackward, turnState.active, setPage, totalPages]);
 
     // Dynamic Stack Thickness to show reading progress
     const leftStackWidth = Math.min(14, Math.max(3, Math.round((safePage / totalPages) * 12)));
@@ -255,17 +482,15 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
       Math.max(3, Math.round(((totalPages - safePage) / totalPages) * 12)),
     );
 
-    // Drag Scrolling (Pan) controller & Horizontal Swipe Gesture
+    // Drag Scrolling (Pan) controller & Touch Swipe Gesture
     const isDraggingScroll = useRef(false);
     const dragScrollStart = useRef({ x: 0, y: 0, left: 0, top: 0 });
     const [isGrabbing, setIsGrabbing] = useState(false);
-    const swipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+    const touchSwipeRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
       if ((e.target as HTMLElement).closest('button, input, .rs-corner-hint, .rs-web-curl-controls'))
         return;
-
-      swipeStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
 
       const isDesk = !(e.target as HTMLElement).closest('.rs-book-container');
       const isHand = toolMode === 'hand';
@@ -295,26 +520,38 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
       }
     };
 
-    const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    const handleMouseUp = () => {
       if (isDraggingScroll.current) {
         isDraggingScroll.current = false;
         setIsGrabbing(false);
       }
+    };
 
-      if (swipeStartRef.current) {
-        const dx = e.clientX - swipeStartRef.current.x;
-        const dy = Math.abs(e.clientY - swipeStartRef.current.y);
-        const elapsed = Date.now() - swipeStartRef.current.time;
+    const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+      if (e.touches.length === 1) {
+        touchSwipeRef.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+          time: Date.now(),
+        };
+      } else {
+        touchSwipeRef.current = null;
+      }
+    };
 
-        // Horizontal swipe to turn page
-        if (Math.abs(dx) > 50 && dy < 120 && elapsed < 800 && !turnState.active) {
-          if (dx < 0 && safePage < totalPages) {
-            void turnForward();
-          } else if (dx > 0 && safePage > 1) {
-            void turnBackward();
-          }
+    const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!touchSwipeRef.current || e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - touchSwipeRef.current.x;
+      const dy = Math.abs(e.changedTouches[0].clientY - touchSwipeRef.current.y);
+      const elapsed = Date.now() - touchSwipeRef.current.time;
+      touchSwipeRef.current = null;
+
+      if (Math.abs(dx) > 55 && dy < 90 && elapsed < 700 && !turnState.active) {
+        if (dx < 0 && safePage < totalPages) {
+          void turnForward();
+        } else if (dx > 0 && safePage > 1) {
+          void turnBackward();
         }
-        swipeStartRef.current = null;
       }
     };
 
@@ -322,7 +559,6 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
       const onUp = () => {
         isDraggingScroll.current = false;
         setIsGrabbing(false);
-        swipeStartRef.current = null;
       };
       window.addEventListener('mouseup', onUp);
       return () => window.removeEventListener('mouseup', onUp);
@@ -338,6 +574,12 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
         ? nextPageHtml
         : currentPageHtml
       : currentPageHtml;
+
+    const basePageNum = turnState.active
+      ? turnState.dir === 'next'
+        ? turnState.toPage
+        : safePage
+      : safePage;
 
     const leafFrontHtml = turnState.active
       ? turnState.dir === 'next'
@@ -381,126 +623,139 @@ export const HtmlBookCurlView = forwardRef<HtmlBookCurlHandle, HtmlBookCurlViewP
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
         >
           <div
             className="rs-book-wrapper"
             style={{
               width: `${bookW}px`,
               height: `${bookH}px`,
-              aspectRatio: `${1 / aspect}`,
             }}
           >
-            {/* Left Stack Thickness (Pages already read) */}
             <div
-              className="rs-book-edge-left"
-              style={{ width: `${leftStackWidth}px` }}
-              title={`${safePage - 1} pages read`}
-            />
+              className="rs-book-zoom-frame"
+              style={{
+                width: `${fitBaseW}px`,
+                height: `${fitBaseH}px`,
+                transform: effectiveZoom !== 1 ? `scale(${effectiveZoom})` : undefined,
+              }}
+            >
+              {/* Left Stack Thickness (Pages already read) */}
+              <div
+                className="rs-book-edge-left"
+                style={{ width: `${leftStackWidth}px` }}
+                title={`${safePage - 1} pages read`}
+              />
 
-            {/* 3D Book Container */}
-            <div className="rs-book-container">
-              {/* Running Spine Crease Shadow */}
-              <div className="rs-book-spine" />
+              {/* 3D Book Container */}
+              <div className="rs-book-container">
+                {/* Running Spine Crease Shadow */}
+                <div className="rs-book-spine" />
 
-              {/* Underneath Base Layer with Native Selectable Text */}
-              <div className="rs-page-base">
-                <div
-                  className={`rs-html-book-page ${className}`}
-                  style={{
-                    userSelect: toolMode === 'hand' || turnState.active ? 'none' : 'text',
-                    pointerEvents: toolMode === 'hand' || turnState.active ? 'none' : 'auto',
-                  }}
-                >
-                  <div className="rs-book-header-line">
-                    <span className="rs-book-running-title" title={docName}>
-                      {docName}
-                    </span>
-                    <span className="rs-book-running-page">Page {safePage}</span>
+                {/* Underneath Base Layer with Native Selectable Text */}
+                <div className="rs-page-base">
+                  <div
+                    ref={pageBoxRef}
+                    className={`rs-html-book-page ${className}`}
+                    style={{
+                      userSelect: toolMode === 'hand' || turnState.active ? 'none' : 'text',
+                      pointerEvents: turnState.active ? 'none' : 'auto',
+                    }}
+                  >
+                    <div className="rs-book-header-line" ref={headerRef}>
+                      <span className="rs-book-running-title" title={docName}>
+                        {docName}
+                      </span>
+                      <span className="rs-book-running-page">Page {basePageNum}</span>
+                    </div>
+
+                    <article
+                      className={articleClass}
+                      dangerouslySetInnerHTML={{ __html: baseHtml }}
+                    />
+
+                    <div className="rs-book-footer-line" ref={footerRef}>
+                      <span>— Page {basePageNum} of {totalPages} —</span>
+                    </div>
                   </div>
 
-                  <article
-                    className={`reader ${isCode ? 'text-body' : 'md-body'} rs-html-page-article`}
-                    dangerouslySetInnerHTML={{ __html: baseHtml }}
-                  />
-
-                  <div className="rs-book-footer-line">
-                    <span>— Page {safePage} of {totalPages} —</span>
-                  </div>
+                  {turnState.active && <div className="rs-under-shadow" />}
                 </div>
 
-                {turnState.active && <div className="rs-under-shadow" />}
+                {/* Active 3D Curling Leaf */}
+                {turnState.active && (
+                  <div
+                    className={`rs-curl-leaf ${
+                      turnState.dir === 'next' ? 'rs-curl-forward' : 'rs-curl-backward'
+                    }`}
+                  >
+                    <div className="rs-leaf-front">
+                      <div className={`rs-html-book-page ${className}`}>
+                        <div className="rs-book-header-line">
+                          <span className="rs-book-running-title" title={docName}>
+                            {docName}
+                          </span>
+                          <span className="rs-book-running-page">
+                            Page {turnState.dir === 'next' ? safePage : safePage - 1}
+                          </span>
+                        </div>
+                        <article
+                          className={articleClass}
+                          dangerouslySetInnerHTML={{ __html: leafFrontHtml }}
+                        />
+                        <div className="rs-book-footer-line">
+                          <span>
+                            — Page {turnState.dir === 'next' ? safePage : safePage - 1} of {totalPages} —
+                          </span>
+                        </div>
+                      </div>
+                      <div className="rs-curl-lighting" />
+                    </div>
+
+                    <div className="rs-leaf-back">
+                      <div className={`rs-html-book-page verso ${className}`}>
+                        <article
+                          className={articleClass}
+                          dangerouslySetInnerHTML={{ __html: leafBackHtml }}
+                        />
+                      </div>
+                      <div className="rs-curl-lighting-back" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Interactive Tap / Click Zones for Fast Turning */}
+                <div
+                  className="rs-hotzone-left"
+                  onClick={() => void turnBackward()}
+                  title="Click or tap to go to previous page"
+                />
+                <div
+                  className="rs-hotzone-right"
+                  onClick={() => void turnForward()}
+                  title="Click or tap to turn to next page"
+                />
+
+                {/* Corner Peel Hover Hint (Play Books Dog-Ear) */}
+                {safePage < totalPages && !turnState.active && (
+                  <div
+                    className="rs-corner-hint"
+                    onClick={() => void turnForward()}
+                    title="Click corner to flip page"
+                  >
+                    <div className="rs-corner-hint-peel" />
+                  </div>
+                )}
               </div>
 
-              {/* Active 3D Curling Leaf */}
-              {turnState.active && (
-                <div
-                  className={`rs-curl-leaf ${
-                    turnState.dir === 'next' ? 'rs-curl-forward' : 'rs-curl-backward'
-                  }`}
-                >
-                  <div className="rs-leaf-front">
-                    <div className={`rs-html-book-page ${className}`}>
-                      <div className="rs-book-header-line">
-                        <span className="rs-book-running-title" title={docName}>
-                          {docName}
-                        </span>
-                        <span className="rs-book-running-page">
-                          Page {turnState.dir === 'next' ? safePage : safePage - 1}
-                        </span>
-                      </div>
-                      <article
-                        className={`reader ${isCode ? 'text-body' : 'md-body'} rs-html-page-article`}
-                        dangerouslySetInnerHTML={{ __html: leafFrontHtml }}
-                      />
-                      <div className="rs-book-footer-line">
-                        <span>— Page {turnState.dir === 'next' ? safePage : safePage - 1} of {totalPages} —</span>
-                      </div>
-                    </div>
-                    <div className="rs-curl-lighting" />
-                  </div>
-
-                  <div className="rs-leaf-back">
-                    <div className={`rs-html-book-page verso ${className}`}>
-                      <article
-                        className={`reader ${isCode ? 'text-body' : 'md-body'} rs-html-page-article`}
-                        dangerouslySetInnerHTML={{ __html: leafBackHtml }}
-                      />
-                    </div>
-                    <div className="rs-curl-lighting-back" />
-                  </div>
-                </div>
-              )}
-
-              {/* Interactive Tap / Click Zones for Fast Turning */}
+              {/* Right Stack Thickness (Pages remaining) */}
               <div
-                className="rs-hotzone-left"
-                onClick={() => void turnBackward()}
-                title="Click or tap to go to previous page"
+                className="rs-book-edge-right"
+                style={{ width: `${rightStackWidth}px` }}
+                title={`${totalPages - safePage} pages remaining`}
               />
-              <div
-                className="rs-hotzone-right"
-                onClick={() => void turnForward()}
-                title="Click or tap to turn to next page"
-              />
-
-              {/* Corner Peel Hover Hint (Play Books Dog-Ear) */}
-              {safePage < totalPages && !turnState.active && (
-                <div
-                  className="rs-corner-hint"
-                  onClick={() => void turnForward()}
-                  title="Click corner to flip page"
-                >
-                  <div className="rs-corner-hint-peel" />
-                </div>
-              )}
             </div>
-
-            {/* Right Stack Thickness (Pages remaining) */}
-            <div
-              className="rs-book-edge-right"
-              style={{ width: `${rightStackWidth}px` }}
-              title={`${totalPages - safePage} pages remaining`}
-            />
           </div>
         </div>
 

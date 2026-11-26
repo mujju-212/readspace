@@ -577,7 +577,10 @@ kbd {
 .html-frame { flex: 1; border: none; width: 100%; background: #fff; }
 
 /* when the floating Preview/Edit toggle is present, keep toolbar buttons clear of it */
-.viewer:has(.mode-toggle) :is(.text-toolbar, .pdf-toolbar) { padding-right: 252px; }
+.viewer:has(.mode-toggle) :is(.text-toolbar, .pdf-toolbar) { padding-right: 244px; gap: 8px; flex-wrap: wrap; }
+.viewer:has(.mode-toggle) .pdf-title { max-width: 170px; }
+.viewer:has(.mode-toggle) .pdf-zoom .btn { min-width: 54px; }
+.viewer:has(.mode-toggle) .pdf-pageinfo { min-width: 82px; }
 @media (max-width: 900px) {
   .viewer:has(.mode-toggle) :is(.text-toolbar, .pdf-toolbar) { padding-right: 4px; padding-top: 40px; flex-wrap: wrap; }
 }
@@ -759,7 +762,7 @@ kbd {
 .split { flex: 1; display: flex; min-height: 0; }
 .split > * { min-width: 0; }
 .split .editor-pane { flex: 1 1 50%; }
-.split-preview { flex: 1 1 50%; display: flex; flex-direction: column; min-width: 0; }
+.split-preview { flex: 1 1 50%; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .split-preview .viewer-scroll { flex: 1; overflow: auto; }
 .split-divider { width: 1px; background: var(--border); flex: 0 0 auto; }
 
@@ -1047,6 +1050,13 @@ kbd {
   box-shadow: none;
 }
 
+.app[data-zen='true'] .mode-toggle {
+  right: 112px;
+}
+.app[data-zen='true'] .viewer:has(.mode-toggle) :is(.text-toolbar, .pdf-toolbar) {
+  padding-right: 344px;
+}
+
 /* zen mode: no title bar, just a faint floating exit affordance */
 .zen-exit {
   position: fixed;
@@ -1085,9 +1095,7 @@ kbd {
   overflow: auto;
   display: flex;
   box-sizing: border-box;
-  padding: 16px 20px 60px;
-  perspective: 2200px;
-  perspective-origin: 50% 50%;
+  padding: 38px 24px 80px;
   cursor: default;
 }
 
@@ -1109,7 +1117,6 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
-  perspective: 2200px;
   transform-style: preserve-3d;
   filter: drop-shadow(0 20px 48px rgba(0, 0, 0, 0.35)) drop-shadow(0 4px 14px rgba(0, 0, 0, 0.15));
   transition: width 0.18s ease-out, height 0.18s ease-out;
@@ -1192,6 +1199,18 @@ html[data-theme='dark'] .rs-book-edge-right {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
+.rs-book-zoom-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: top left;
+  transform-style: preserve-3d;
+  flex: 0 0 auto;
+}
+
 /* Main Book Container */
 .rs-book-container {
   position: relative;
@@ -1200,9 +1219,9 @@ html[data-theme='dark'] .rs-book-edge-right {
   background: #ffffff;
   border-radius: 4px 8px 8px 4px;
   transform-style: preserve-3d;
-  perspective: 2000px;
+  perspective: 3600px;
+  perspective-origin: 50% 50%;
   box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
   border: 1px solid var(--border);
 }
 
@@ -1320,27 +1339,27 @@ html[data-theme='dark'] .rs-page-base {
 /* Realistic 3D Paper Curl Animation (Google Play Books Inspired) */
 @keyframes curlFlipForward {
   0% {
-    transform: perspective(2200px) rotateY(0deg) rotateZ(0deg) translateZ(0) scaleX(1);
+    transform: rotateY(0deg) rotateZ(0deg) translateZ(0) scaleX(1);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   }
   20% {
     /* Right edge lifts & peels inwards with cylindrical arc compression */
-    transform: perspective(2200px) rotateY(-28deg) rotateZ(-1.2deg) translateZ(40px) scaleX(0.97) skewY(-1.8deg);
-    box-shadow: -10px 12px 24px rgba(0, 0, 0, 0.28);
+    transform: rotateY(-28deg) rotateZ(-0.4deg) translateZ(14px) scaleX(0.97) skewY(-0.6deg);
+    box-shadow: -10px 12px 24px rgba(0, 0, 0, 0.26);
   }
   52% {
-    /* Peak curl cylinder: arched high above book with maximum depth */
-    transform: perspective(2200px) rotateY(-84deg) rotateZ(-2.6deg) translateZ(66px) scaleX(0.88) skewY(-3deg);
-    box-shadow: -24px 18px 40px rgba(0, 0, 0, 0.38);
+    /* Peak curl cylinder: arched cleanly above book without clipping viewport */
+    transform: rotateY(-84deg) rotateZ(-0.7deg) translateZ(22px) scaleX(0.9) skewY(-0.9deg);
+    box-shadow: -22px 16px 36px rgba(0, 0, 0, 0.34);
   }
   80% {
     /* Rolling into spine crease */
-    transform: perspective(2200px) rotateY(-144deg) rotateZ(-1deg) translateZ(36px) scaleX(0.95) skewY(-1.2deg);
+    transform: rotateY(-144deg) rotateZ(-0.3deg) translateZ(12px) scaleX(0.96) skewY(-0.4deg);
     box-shadow: -12px 10px 22px rgba(0, 0, 0, 0.22);
   }
   100% {
     /* Landing flat on left side */
-    transform: perspective(2200px) rotateY(-180deg) rotateZ(0deg) translateZ(0) scaleX(1) skewY(0deg);
+    transform: rotateY(-180deg) rotateZ(0deg) translateZ(0) scaleX(1) skewY(0deg);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
 }
@@ -1348,23 +1367,23 @@ html[data-theme='dark'] .rs-page-base {
 /* Backward Page Turn Animation (Page N -> N-1) */
 @keyframes curlFlipBackward {
   0% {
-    transform: perspective(2200px) rotateY(-180deg) rotateZ(0deg) translateZ(0) scaleX(1) skewY(0deg);
+    transform: rotateY(-180deg) rotateZ(0deg) translateZ(0) scaleX(1) skewY(0deg);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
   20% {
-    transform: perspective(2200px) rotateY(-144deg) rotateZ(-1deg) translateZ(36px) scaleX(0.95) skewY(-1.2deg);
+    transform: rotateY(-144deg) rotateZ(-0.3deg) translateZ(12px) scaleX(0.96) skewY(-0.4deg);
     box-shadow: -12px 10px 22px rgba(0, 0, 0, 0.22);
   }
   52% {
-    transform: perspective(2200px) rotateY(-84deg) rotateZ(-2.6deg) translateZ(66px) scaleX(0.88) skewY(-3deg);
-    box-shadow: -24px 18px 40px rgba(0, 0, 0, 0.38);
+    transform: rotateY(-84deg) rotateZ(-0.7deg) translateZ(22px) scaleX(0.9) skewY(-0.9deg);
+    box-shadow: -22px 16px 36px rgba(0, 0, 0, 0.34);
   }
   80% {
-    transform: perspective(2200px) rotateY(-28deg) rotateZ(-1.2deg) translateZ(40px) scaleX(0.97) skewY(-1.8deg);
-    box-shadow: -10px 12px 24px rgba(0, 0, 0, 0.28);
+    transform: rotateY(-28deg) rotateZ(-0.4deg) translateZ(14px) scaleX(0.97) skewY(-0.6deg);
+    box-shadow: -10px 12px 24px rgba(0, 0, 0, 0.26);
   }
   100% {
-    transform: perspective(2200px) rotateY(0deg) rotateZ(0deg) translateZ(0) scaleX(1);
+    transform: rotateY(0deg) rotateZ(0deg) translateZ(0) scaleX(1);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   }
 }
@@ -1804,7 +1823,7 @@ html[data-theme='dark'] .rs-html-page-article::-webkit-scrollbar-thumb {
 .rs-html-page-article p {
   margin-top: 0.25em;
   margin-bottom: 0.48em;
-  line-height: 1.68;
+  line-height: inherit;
 }
 
 .rs-html-page-article ul,
@@ -1815,7 +1834,28 @@ html[data-theme='dark'] .rs-html-page-article::-webkit-scrollbar-thumb {
 
 .rs-html-page-article li {
   margin-bottom: 0.25em;
-  line-height: 1.62;
+  line-height: inherit;
+}
+
+.rs-html-page-article [data-rs-reopened='true'] {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  border-top-width: 0 !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  text-indent: 0 !important;
+}
+
+.rs-html-page-article li[data-rs-reopened='true'] {
+  list-style-type: none !important;
+}
+
+.rs-html-page-article [data-rs-sliced='true'] {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  border-bottom-width: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
 }
 
 .rs-html-page-article pre {
@@ -2733,7 +2773,7 @@ html[data-theme='dark'] .rs-book-footer-line {
   /* reader full-bleed-ish: card keeps small radius, less padding */
   .content { padding: 10px 10px 14px; }
   .content .viewer { border-radius: 10px; padding-top: 52px; }
-  .content .viewer .text-toolbar { margin-top: -52px; padding-top: 52px; }
+  .content .viewer :is(.text-toolbar, .pdf-toolbar) { margin-top: -52px; padding-top: 48px; }
 
   /* dialogs become bottom sheets (PRD §21.1) */
   .overlay { align-items: flex-end; }

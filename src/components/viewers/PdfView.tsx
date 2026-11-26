@@ -4,7 +4,10 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ZoomIn, ZoomOut } from '../Icons';
 import { copyTextToClipboard } from './TextView';
 import { useSettings } from '../../stores/settings';
+import { useWorkspace } from '../../stores/workspace';
 import { BookCurlView, type BookCurlHandle } from './BookCurlView';
+
+const pdfPageMemory = new Map<string, number>();
 
 /** pdf.js worker wiring — done once, lazily (TRD §9: dynamic import). */
 let workerReady: Promise<void> | null = null;
@@ -27,20 +30,37 @@ function ensureWorker(): Promise<void> {
  * fit-width / zoom, page navigation. Selection via pdf.js text layer
  * (best effort — silently skipped if unsupported).
  */
-export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: string }) {
+export default function PdfView({ buffer, name, path }: { buffer: ArrayBuffer; name: string; path?: string }) {
   const mode = useSettings((s) => s.readingMode);
+  const providerId = useWorkspace((s) => s.provider?.id ?? 'local');
+  const memKey = `${providerId}::${path || name}`;
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPageState] = useState(() => pdfPageMemory.get(memKey) ?? 1);
   const [fit, setFit] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [toolMode, setToolMode] = useState<'select' | 'hand'>('select');
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [viewportDims, setViewportDims] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
-  const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const curlNavRef = useRef<BookCurlHandle>(null);
+  const suppressScrollSyncUntilRef = useRef(0);
+
+  const setPage = useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setPageState((prev) => {
+        const val = typeof next === 'function' ? next(prev) : next;
+        pdfPageMemory.set(memKey, val);
+        return val;
+      });
+    },
+    [memKey],
+  );
+
+  useEffect(() => {
+    setPageState(pdfPageMemory.get(memKey) ?? 1);
+  }, [memKey]);
 
   const handleCopyCurrentPage = useCallback(async () => {
     if (!doc) return;
@@ -67,6 +87,8 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
   useEffect(() => {
     let dead = false;
     let task: { destroy: () => void } | null = null;
+    setErr(null);
+    setDoc(null);
     void (async () => {
       try {
         await ensureWorker();
@@ -75,7 +97,10 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
         const task2 = pdfjs.getDocument({ data });
         task = task2 as unknown as { destroy: () => void };
         const d = await task2.promise;
-        if (!dead) setDoc(d);
+        if (!dead) {
+          setDoc(d);
+          setPage((prev) => Math.max(1, Math.min(d.numPages, prev)));
+        }
       } catch (e) {
         if (!dead) setErr(String((e as Error).message ?? e));
       }
@@ -84,7 +109,7 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
       dead = true;
       try { void task?.destroy(); } catch { /* ignore */ }
     };
-  }, [buffer]);
+  }, [buffer, setPage]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -96,30 +121,6 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
     ro.observe(el);
     update();
     return () => ro.disconnect();
-  }, [doc]);
-
-  const goToNextPage = useCallback(() => {
-    if (!doc) return;
-    setPage((p) => {
-      const next = Math.min(doc.numPages, p + 1);
-      if (next !== p) {
-        setTurnAnim('next');
-        setTimeout(() => setTurnAnim(null), 300);
-      }
-      return next;
-    });
-  }, [doc]);
-
-  const goToPrevPage = useCallback(() => {
-    if (!doc) return;
-    setPage((p) => {
-      const prev = Math.max(1, p - 1);
-      if (prev !== p) {
-        setTurnAnim('prev');
-        setTimeout(() => setTurnAnim(null), 300);
-      }
-      return prev;
-    });
   }, [doc]);
 
   const scrollToPage = useCallback((n: number) => {
@@ -139,12 +140,25 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !doc) return;
+    if (!el || !doc || mode !== 'scroll') return;
+    const targetPage = Math.max(1, Math.min(doc.numPages, page));
+    if (targetPage > 1) {
+      suppressScrollSyncUntilRef.current = Date.now() + 450;
+      requestAnimationFrame(() => {
+        const targetEl = document.getElementById(`pdf-page-${targetPage}`);
+        if (targetEl && scrollRef.current) {
+          const top = targetEl.getBoundingClientRect().top - scrollRef.current.getBoundingClientRect().top + scrollRef.current.scrollTop;
+          scrollRef.current.scrollTo({ top, behavior: 'auto' });
+        }
+      });
+    }
     let timer: number | null = null;
     const onScroll = () => {
+      if (Date.now() < suppressScrollSyncUntilRef.current) return;
       if (timer !== null) return;
       timer = window.requestAnimationFrame(() => {
         timer = null;
+        if (Date.now() < suppressScrollSyncUntilRef.current) return;
         const pages = el.querySelectorAll<HTMLElement>('.pdf-page');
         const scrollMid = el.scrollTop + el.clientHeight / 3;
         for (const p of pages) {
@@ -163,23 +177,8 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
       el.removeEventListener('scroll', onScroll);
       if (timer !== null) window.cancelAnimationFrame(timer);
     };
-  }, [doc]);
-
-  useEffect(() => {
-    if (mode !== 'curl') return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
-        e.preventDefault();
-        goToNextPage();
-      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        e.preventDefault();
-        goToPrevPage();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [mode, goToNextPage, goToPrevPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, mode]);
 
   if (err) {
     return (
@@ -326,11 +325,13 @@ export default function PdfView({ buffer, name }: { buffer: ArrayBuffer; name: s
         <div className="pdf-scroll" ref={scrollRef}>
           {Array.from({ length: doc.numPages }, (_, i) => (
             <PdfPage
-              key={`${i + 1}@${targetW}`}
+              key={i + 1}
               doc={doc}
               num={i + 1}
               targetWidth={targetW}
-              onVisible={setPage}
+              onVisible={(n) => {
+                if (Date.now() >= suppressScrollSyncUntilRef.current) setPage(n);
+              }}
             />
           ))}
         </div>

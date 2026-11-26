@@ -1,6 +1,7 @@
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
   forwardRef,
@@ -23,6 +24,8 @@ interface BookCurlViewProps {
   toolMode?: 'select' | 'hand';
   setToolMode?: (mode: 'select' | 'hand') => void;
 }
+
+const MAX_CACHED_CANVASES = 16;
 
 /** Synthesize a soft paper rustle sound using Web Audio API (zero audio files needed). */
 function playPaperTurnSound() {
@@ -82,8 +85,9 @@ function cloneCanvasVerso(src: HTMLCanvasElement): HTMLCanvasElement {
   copy.style.height = '100%';
   copy.style.objectFit = 'contain';
   copy.style.display = 'block';
-  copy.style.filter = 'blur(0.5px) contrast(0.8)';
-  copy.style.opacity = '0.22';
+  copy.style.transform = 'scaleX(-1)';
+  copy.style.filter = 'blur(0.5px) contrast(0.85)';
+  copy.style.opacity = '0.28';
   const ctx = copy.getContext('2d');
   if (ctx) {
     ctx.drawImage(src, 0, 0);
@@ -92,7 +96,7 @@ function cloneCanvasVerso(src: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(function BookCurlView(
-  { doc, page, setPage, zoom = 1, fit = true, docName, toolMode = 'select', setToolMode },
+  { doc, page, setPage, zoom = 1, fit = true, toolMode = 'select' },
   ref,
 ) {
   const [aspect, setAspect] = useState(1.414);
@@ -110,15 +114,27 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
 
   const canvasCache = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const textContentCache = useRef<Map<number, unknown>>(new Map());
+  const pageAspectsRef = useRef<Map<number, number>>(new Map());
+  const activePageRef = useRef(page);
+  activePageRef.current = page;
+
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const baseRef = useRef<HTMLDivElement>(null);
   const textLayerHostRef = useRef<HTMLDivElement>(null);
   const leafFrontRef = useRef<HTMLDivElement>(null);
   const leafBackRef = useRef<HTMLDivElement>(null);
+  const pendingTurnCanvasesRef = useRef<{ front: HTMLCanvasElement; back: HTMLCanvasElement } | null>(null);
   const isTurningRef = useRef(false);
-  const prevPageRef = useRef(page);
+  const turnTimerRef = useRef<number | null>(null);
+  const textLayerSeqRef = useRef(0);
   const bookWRef = useRef(500);
+
+  useEffect(() => {
+    return () => {
+      if (turnTimerRef.current !== null) window.clearTimeout(turnTimerRef.current);
+    };
+  }, []);
 
   // Measure available scroll area dimensions with ResizeObserver for true responsive fit
   useEffect(() => {
@@ -132,7 +148,11 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
       const padRight = parseFloat(cs.paddingRight) || 0;
       const availW = Math.max(200, el.clientWidth - padLeft - padRight);
       const availH = Math.max(200, el.clientHeight - padTop - padBottom);
-      setStageSize({ w: availW, h: availH });
+      setStageSize((prev) =>
+        Math.abs(prev.w - availW) >= 2 || Math.abs(prev.h - availH) >= 2
+          ? { w: availW, h: availH }
+          : prev,
+      );
     };
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -140,18 +160,30 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     return () => ro.disconnect();
   }, []);
 
-  // Render a PDF page onto an HTMLCanvasElement with devicePixelRatio & zoom caching
+  // Render a PDF page onto an HTMLCanvasElement with LRU caching & per-page aspect tracking
   const renderPdfPage = useCallback(
     async (pNum: number): Promise<HTMLCanvasElement | null> => {
       if (pNum < 1 || pNum > doc.numPages) return null;
       const cached = canvasCache.current.get(pNum);
-      if (cached) return cached;
+      if (cached) {
+        // Refresh LRU order
+        canvasCache.current.delete(pNum);
+        canvasCache.current.set(pNum, cached);
+        const knownAspect = pageAspectsRef.current.get(pNum);
+        if (knownAspect && pNum === activePageRef.current) {
+          setAspect(knownAspect);
+        }
+        return cached;
+      }
 
       try {
         const pdfPage = await doc.getPage(pNum);
         const vp1 = pdfPage.getViewport({ scale: 1 });
         const curAspect = vp1.height / vp1.width;
-        setAspect(curAspect);
+        pageAspectsRef.current.set(pNum, curAspect);
+        if (pNum === activePageRef.current) {
+          setAspect(curAspect);
+        }
 
         // Render at crisp double-resolution + zoom factor for pin-sharp display at all zoom levels
         const dpr = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
@@ -175,6 +207,16 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
         }
         await pdfPage.render({ canvasContext: ctx!, viewport: vp }).promise;
         pdfPage.cleanup();
+
+        // Evict oldest cached canvas if over LRU limit (never evict active page)
+        if (canvasCache.current.size >= MAX_CACHED_CANVASES) {
+          for (const key of canvasCache.current.keys()) {
+            if (key !== activePageRef.current) {
+              canvasCache.current.delete(key);
+              break;
+            }
+          }
+        }
         canvasCache.current.set(pNum, canvas);
         return canvas;
       } catch (err) {
@@ -190,9 +232,11 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     async (pNum: number, currentBookW: number) => {
       const host = textLayerHostRef.current;
       if (!host || pNum < 1 || pNum > doc.numPages) return;
+      const seq = ++textLayerSeqRef.current;
 
       try {
         const pdfPage = await doc.getPage(pNum);
+        if (seq !== textLayerSeqRef.current) return;
         const vp1 = pdfPage.getViewport({ scale: 1 });
         const scale = currentBookW / vp1.width;
         const vp = pdfPage.getViewport({ scale });
@@ -202,24 +246,27 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
           textContent = await pdfPage.getTextContent();
           textContentCache.current.set(pNum, textContent);
         }
+        if (seq !== textLayerSeqRef.current) return;
 
         const pdfjs = await import('pdfjs-dist');
+        if (seq !== textLayerSeqRef.current) return;
         const TextLayerCtor = (
           pdfjs as unknown as {
             TextLayer?: new (o: object) => { render(): Promise<void> };
           }
         ).TextLayer;
 
-        if (TextLayerCtor && host) {
-          host.replaceChildren();
-          host.style.width = '100%';
-          host.style.height = '100%';
-          host.style.setProperty('--scale-factor', String(scale));
-          host.style.setProperty('--total-scale-factor', String(scale));
+        if (TextLayerCtor && textLayerHostRef.current) {
+          const targetHost = textLayerHostRef.current;
+          targetHost.replaceChildren();
+          targetHost.style.width = '100%';
+          targetHost.style.height = '100%';
+          targetHost.style.setProperty('--scale-factor', String(scale));
+          targetHost.style.setProperty('--total-scale-factor', String(scale));
 
           const tl = new TextLayerCtor({
             textContentSource: textContent,
-            container: host,
+            container: targetHost,
             viewport: vp,
           });
           await tl.render();
@@ -231,20 +278,35 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     [doc],
   );
 
-  // Clear cache when document or zoom changes
+  // Clear text & aspect caches and cancel any in-flight turn when document changes
+  useEffect(() => {
+    textContentCache.current.clear();
+    pageAspectsRef.current.clear();
+    if (turnTimerRef.current !== null) {
+      window.clearTimeout(turnTimerRef.current);
+      turnTimerRef.current = null;
+    }
+    pendingTurnCanvasesRef.current = null;
+    isTurningRef.current = false;
+    setTurnState({ active: false, dir: 'next', fromPage: activePageRef.current, toPage: activePageRef.current });
+  }, [doc]);
+
+  // Clear bitmap canvas cache only when document or zoom/fit changes (NOT on page turns!)
   useEffect(() => {
     canvasCache.current.clear();
-    textContentCache.current.clear();
-    void (async () => {
-      const cur = await renderPdfPage(page);
-      if (cur && baseRef.current && !isTurningRef.current) {
-        baseRef.current.replaceChildren(cloneCanvas(cur));
-      }
-      if (!isTurningRef.current) {
-        void renderTextLayer(page, bookWRef.current);
-      }
-    })();
-  }, [doc, fit, zoom, renderPdfPage, renderTextLayer, page]);
+  }, [doc, fit, zoom]);
+
+  // Populate curling leaf front & back synchronously right after React mounts .rs-curl-leaf
+  useLayoutEffect(() => {
+    if (!turnState.active || !pendingTurnCanvasesRef.current) return;
+    const { front, back } = pendingTurnCanvasesRef.current;
+    if (leafFrontRef.current) {
+      leafFrontRef.current.replaceChildren(front);
+    }
+    if (leafBackRef.current) {
+      leafBackRef.current.replaceChildren(back);
+    }
+  }, [turnState]);
 
   // When returning to Fit, gently reset scroll to top
   useEffect(() => {
@@ -262,11 +324,11 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     const to = page + 1;
 
     // Clear text layer while turning so it doesn't float over the curling leaf
+    textLayerSeqRef.current++;
     if (textLayerHostRef.current) {
       textLayerHostRef.current.replaceChildren();
     }
 
-    // Ensure destination page canvas is ready
     const [fromCanvas, toCanvas] = await Promise.all([
       renderPdfPage(from),
       renderPdfPage(to),
@@ -283,23 +345,21 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
       baseRef.current.replaceChildren(cloneCanvas(toCanvas));
     }
 
-    // Set leaf front to current page
-    if (leafFrontRef.current) {
-      leafFrontRef.current.replaceChildren(cloneCanvas(fromCanvas));
-    }
+    // Stage front & verso canvases for useLayoutEffect to mount onto .rs-curl-leaf
+    pendingTurnCanvasesRef.current = {
+      front: cloneCanvas(fromCanvas),
+      back: cloneCanvasVerso(fromCanvas),
+    };
 
-    // Set leaf back to mirrored / verso paper
-    if (leafBackRef.current) {
-      leafBackRef.current.replaceChildren(cloneCanvasVerso(fromCanvas));
-    }
+    const toAspect = pageAspectsRef.current.get(to);
+    if (toAspect) setAspect(toAspect);
 
     playPaperTurnSound();
     setTurnState({ active: true, dir: 'next', fromPage: from, toPage: to });
 
-    // Wait for the realistic 3D curl animation to complete (~580ms)
-    setTimeout(() => {
+    turnTimerRef.current = window.setTimeout(() => {
+      pendingTurnCanvasesRef.current = null;
       setPage(to);
-      prevPageRef.current = to;
       setTurnState({ active: false, dir: 'next', fromPage: to, toPage: to });
       isTurningRef.current = false;
       void renderTextLayer(to, bookWRef.current);
@@ -314,6 +374,7 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     const from = page;
     const to = page - 1;
 
+    textLayerSeqRef.current++;
     if (textLayerHostRef.current) {
       textLayerHostRef.current.replaceChildren();
     }
@@ -329,29 +390,28 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
       return;
     }
 
-    // Set underneath base layer to current page
+    // Set underneath base layer to current page while previous page flips back over it
     if (baseRef.current) {
       baseRef.current.replaceChildren(cloneCanvas(fromCanvas));
     }
 
-    // The leaf turning from the left holds destination page on its front
-    if (leafFrontRef.current) {
-      leafFrontRef.current.replaceChildren(cloneCanvas(toCanvas));
-    }
+    pendingTurnCanvasesRef.current = {
+      front: cloneCanvas(toCanvas),
+      back: cloneCanvasVerso(toCanvas),
+    };
 
-    if (leafBackRef.current) {
-      leafBackRef.current.replaceChildren(cloneCanvasVerso(toCanvas));
-    }
+    const toAspect = pageAspectsRef.current.get(to);
+    if (toAspect) setAspect(toAspect);
 
     playPaperTurnSound();
     setTurnState({ active: true, dir: 'prev', fromPage: from, toPage: to });
 
-    setTimeout(() => {
-      setPage(to);
-      prevPageRef.current = to;
+    turnTimerRef.current = window.setTimeout(() => {
+      pendingTurnCanvasesRef.current = null;
       if (baseRef.current && toCanvas) {
         baseRef.current.replaceChildren(cloneCanvas(toCanvas));
       }
+      setPage(to);
       setTurnState({ active: false, dir: 'prev', fromPage: to, toPage: to });
       isTurningRef.current = false;
       void renderTextLayer(to, bookWRef.current);
@@ -364,35 +424,20 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     turnBackward,
   }));
 
-  // Synchronize external page changes (e.g. from top toolbar or slider)
-  useEffect(() => {
-    if (page === prevPageRef.current) return;
-    const oldP = prevPageRef.current;
-    prevPageRef.current = page;
-
-    if (page === oldP + 1 && !isTurningRef.current) {
-      void turnForward();
-    } else if (page === oldP - 1 && !isTurningRef.current) {
-      void turnBackward();
-    } else {
-      // Direct jump (e.g. scrubber jump): immediately render destination
-      void (async () => {
-        const cur = await renderPdfPage(page);
-        if (cur && baseRef.current && !isTurningRef.current) {
-          baseRef.current.replaceChildren(cloneCanvas(cur));
-        }
-      })();
-    }
-  }, [page, turnForward, turnBackward, renderPdfPage]);
-
-  // Initial render & pre-fetch
+  // Render active page (from cache or pdf.js) + pre-fetch neighbors
   useEffect(() => {
     let alive = true;
+    const knownAspect = pageAspectsRef.current.get(page);
+    if (knownAspect) setAspect(knownAspect);
+
     void (async () => {
       const cur = await renderPdfPage(page);
       if (!alive) return;
       if (cur && baseRef.current && !isTurningRef.current) {
         baseRef.current.replaceChildren(cloneCanvas(cur));
+      }
+      if (!isTurningRef.current) {
+        void renderTextLayer(page, bookWRef.current);
       }
       if (page + 1 <= doc.numPages) void renderPdfPage(page + 1);
       if (page - 1 >= 1) void renderPdfPage(page - 1);
@@ -400,9 +445,9 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     return () => {
       alive = false;
     };
-  }, [doc, page, renderPdfPage]);
+  }, [doc, page, fit, zoom, renderPdfPage, renderTextLayer]);
 
-  // Keyboard navigation
+  // Keyboard navigation (single owner in 3D mode)
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -412,17 +457,23 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
         void turnBackward();
+      } else if (e.key === 'Home' && !turnState.active) {
+        e.preventDefault();
+        setPage(1);
+      } else if (e.key === 'End' && !turnState.active) {
+        e.preventDefault();
+        setPage(doc.numPages);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [turnForward, turnBackward]);
+  }, [turnForward, turnBackward, turnState.active, setPage, doc.numPages]);
 
   const leftStackWidth = Math.min(14, Math.max(3, Math.round((page / doc.numPages) * 12)));
   const rightStackWidth = Math.min(14, Math.max(3, Math.round(((doc.numPages - page) / doc.numPages) * 12)));
 
-  // Responsive Book Sizing: Fit cleanly inside available scroll area preserving document aspect ratio
-  const availH = stageSize.h > 0 ? stageSize.h : 680;
+  // Responsive Book Sizing: Fit cleanly inside available scroll area with curl clearance
+  const availH = stageSize.h > 0 ? Math.max(240, stageSize.h - 32) : 650;
   const availW = stageSize.w > 0 ? stageSize.w - 36 : 500;
 
   let fitBaseH = availH;
@@ -436,16 +487,21 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
   const bookH = Math.max(280, Math.round(fit ? fitBaseH : fitBaseH * zoom));
   bookWRef.current = bookW;
 
-  // Drag Scrolling (Pan) controller & Horizontal Swipe Gesture
+  // Re-align textLayer whenever bookW changes (e.g. window resize, sidebar toggle, Zen mode)
+  useEffect(() => {
+    if (!isTurningRef.current) {
+      void renderTextLayer(page, bookW);
+    }
+  }, [bookW, page, renderTextLayer]);
+
+  // Drag Scrolling (Pan) controller & Touch Swipe Gesture
   const isDraggingScroll = useRef(false);
   const dragScrollStart = useRef({ x: 0, y: 0, left: 0, top: 0 });
   const [isGrabbing, setIsGrabbing] = useState(false);
-  const swipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchSwipeRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, input, .rs-corner-hint, .rs-web-curl-controls')) return;
-
-    swipeStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
 
     const isDesk = !(e.target as HTMLElement).closest('.rs-book-container');
     const isHand = toolMode === 'hand';
@@ -475,26 +531,38 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseUp = () => {
     if (isDraggingScroll.current) {
       isDraggingScroll.current = false;
       setIsGrabbing(false);
     }
+  };
 
-    if (swipeStartRef.current) {
-      const dx = e.clientX - swipeStartRef.current.x;
-      const dy = Math.abs(e.clientY - swipeStartRef.current.y);
-      const elapsed = Date.now() - swipeStartRef.current.time;
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 1) {
+      touchSwipeRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now(),
+      };
+    } else {
+      touchSwipeRef.current = null;
+    }
+  };
 
-      // Horizontal swipe to turn page
-      if (Math.abs(dx) > 50 && dy < 120 && elapsed < 800 && !turnState.active) {
-        if (dx < 0 && page < doc.numPages) {
-          void turnForward();
-        } else if (dx > 0 && page > 1) {
-          void turnBackward();
-        }
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchSwipeRef.current || e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - touchSwipeRef.current.x;
+    const dy = Math.abs(e.changedTouches[0].clientY - touchSwipeRef.current.y);
+    const elapsed = Date.now() - touchSwipeRef.current.time;
+    touchSwipeRef.current = null;
+
+    if (Math.abs(dx) > 55 && dy < 90 && elapsed < 700 && !turnState.active) {
+      if (dx < 0 && page < doc.numPages) {
+        void turnForward();
+      } else if (dx > 0 && page > 1) {
+        void turnBackward();
       }
-      swipeStartRef.current = null;
     }
   };
 
@@ -502,7 +570,6 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
     const onUp = () => {
       isDraggingScroll.current = false;
       setIsGrabbing(false);
-      swipeStartRef.current = null;
     };
     window.addEventListener('mouseup', onUp);
     return () => window.removeEventListener('mouseup', onUp);
@@ -542,6 +609,8 @@ export const BookCurlView = forwardRef<BookCurlHandle, BookCurlViewProps>(functi
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
         <div
           className="rs-book-wrapper"

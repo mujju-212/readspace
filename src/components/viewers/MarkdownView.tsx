@@ -1,24 +1,48 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '../../stores/workspace';
 import { renderMarkdown } from '../../services/assets';
 import { useSettings } from '../../stores/settings';
 import { copyTextToClipboard } from './TextView';
 import { ZoomIn, ZoomOut } from '../Icons';
+import { Spinner } from '../Spinner';
 import { HtmlBookCurlView, type HtmlBookCurlHandle } from './HtmlBookCurlView';
+
+const pageMemory = new Map<string, number>();
 
 /** Markdown viewer (FR-20, FR-21): GFM + sanitised + workspace-relative images + 3D Book Mode. */
 export default function MarkdownView({ text, path }: { text: string; path: string }) {
   const provider = useWorkspace((s) => s.provider)!;
   const mode = useSettings((s) => s.readingMode);
-  const [html, setHtml] = useState('');
-  const [page, setPage] = useState(1);
+  const memKey = `${provider.id}::${path}`;
+  const [html, setHtml] = useState<string | null>(null);
+  const [page, setPageState] = useState(() => pageMemory.get(memKey) ?? 1);
   const [totalPages, setTotalPages] = useState(1);
   const [fit, setFit] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [toolMode, setToolMode] = useState<'select' | 'hand'>('select');
   const [copied, setCopied] = useState(false);
   const blobUrls = useRef<string[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
   const curlNavRef = useRef<HtmlBookCurlHandle>(null);
+  const loadedKeyRef = useRef<string | null>(null);
+
+  const setPage = useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setPageState((prev) => {
+        const val = typeof next === 'function' ? next(prev) : next;
+        pageMemory.set(memKey, val);
+        return val;
+      });
+    },
+    [memKey],
+  );
+
+  useEffect(() => {
+    if (loadedKeyRef.current !== memKey) {
+      setHtml(null);
+      setPageState(pageMemory.get(memKey) ?? 1);
+    }
+  }, [memKey]);
 
   useEffect(() => {
     let alive = true;
@@ -26,25 +50,21 @@ export default function MarkdownView({ text, path }: { text: string; path: strin
       if (!alive) return;
       blobUrls.current.forEach((u) => URL.revokeObjectURL(u));
       blobUrls.current = out.blobUrls;
+      loadedKeyRef.current = memKey;
       setHtml(out.html);
     });
     return () => {
       alive = false;
     };
-  }, [text, path, provider]);
+  }, [text, path, provider, memKey]);
 
   useEffect(() => () => {
     blobUrls.current.forEach((u) => URL.revokeObjectURL(u));
   }, []);
 
-  // Clamp page if out of bounds
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
   const handleCopyCurrentPage = useCallback(async () => {
     if (mode === 'curl') {
-      const article = document.querySelector('.markdown-view .rs-page-base .rs-html-page-article') as HTMLElement | null;
+      const article = rootRef.current?.querySelector('.rs-page-base .rs-html-page-article') as HTMLElement | null;
       const plain = (article?.textContent || article?.innerText || '').trim();
       const ok = await copyTextToClipboard(plain || text);
       setCopied(ok);
@@ -61,7 +81,7 @@ export default function MarkdownView({ text, path }: { text: string; path: strin
   const name = path.split('/').pop() || path;
 
   return (
-    <div className="markdown-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div ref={rootRef} className="markdown-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {mode === 'curl' ? (
         <div className="pdf-toolbar">
           <span className="pdf-title" title={path}>
@@ -188,7 +208,9 @@ export default function MarkdownView({ text, path }: { text: string; path: strin
         </div>
       )}
 
-      {mode === 'curl' ? (
+      {html === null ? (
+        <Spinner label="Rendering markdown…" />
+      ) : mode === 'curl' ? (
         <HtmlBookCurlView
           ref={curlNavRef}
           rawHtml={html}

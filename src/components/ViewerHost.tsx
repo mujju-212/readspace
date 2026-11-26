@@ -242,17 +242,17 @@ export function ViewerHost({ tab }: { tab: Tab }) {
       case 'html':
         return <ErrorBoundary><HtmlView text={text} path={tab.path} /></ErrorBoundary>;
       case 'text':
-        return <TextView text={text} ext={tab.ext} name={tab.title} />;
+        return <TextView text={text} ext={tab.ext} name={tab.title} path={tab.path} />;
       case 'pdf':
         return (
           <Suspense fallback={<Spinner label="Loading PDF engine…" />}>
-            <ErrorBoundary><PdfView buffer={loaded.buffer!} name={tab.title} /></ErrorBoundary>
+            <ErrorBoundary><PdfView buffer={loaded.buffer!} name={tab.title} path={tab.path} /></ErrorBoundary>
           </Suspense>
         );
       case 'docx':
         return (
           <Suspense fallback={<Spinner label="Loading document engine…" />}>
-            <ErrorBoundary><DocxView buffer={loaded.buffer!} name={tab.title} /></ErrorBoundary>
+            <ErrorBoundary><DocxView buffer={loaded.buffer!} name={tab.title} path={tab.path} /></ErrorBoundary>
           </Suspense>
         );
       case 'image':

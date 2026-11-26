@@ -4,26 +4,49 @@ import mammoth from 'mammoth/mammoth.browser.min.js';
 import { Spinner } from '../Spinner';
 import { copyTextToClipboard } from './TextView';
 import { useSettings } from '../../stores/settings';
+import { useWorkspace } from '../../stores/workspace';
 import { ZoomIn, ZoomOut } from '../Icons';
 import { HtmlBookCurlView, type HtmlBookCurlHandle } from './HtmlBookCurlView';
+
+const docxPageMemory = new Map<string, number>();
 
 /**
  * Word document viewer (FR-24): mammoth converts DOCX → semantic HTML,
  * sanitised, then rendered with 3D Book Mode or continuous scroll typography.
  */
-export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: string }) {
+export default function DocxView({ buffer, name, path }: { buffer: ArrayBuffer; name: string; path?: string }) {
   const mode = useSettings((s) => s.readingMode);
+  const providerId = useWorkspace((s) => s.provider?.id ?? 'local');
+  const memKey = `${providerId}::${path || name}`;
   const [html, setHtml] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPageState] = useState(() => docxPageMemory.get(memKey) ?? 1);
   const [fit, setFit] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [toolMode, setToolMode] = useState<'select' | 'hand'>('select');
   const [copied, setCopied] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const curlNavRef = useRef<HtmlBookCurlHandle>(null);
+
+  const setPage = useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setPageState((prev) => {
+        const val = typeof next === 'function' ? next(prev) : next;
+        docxPageMemory.set(memKey, val);
+        return val;
+      });
+    },
+    [memKey],
+  );
+
+  useEffect(() => {
+    setPageState(docxPageMemory.get(memKey) ?? 1);
+  }, [memKey]);
 
   useEffect(() => {
     let alive = true;
+    setErr(null);
+    setHtml(null);
     void (async () => {
       try {
         const result = await mammoth.convertToHtml({ arrayBuffer: buffer.slice(0) });
@@ -44,13 +67,9 @@ export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: 
 
   const [totalPages, setTotalPages] = useState(1);
 
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
   const handleCopyText = useCallback(async () => {
     if (mode === 'curl') {
-      const article = document.querySelector('.docx-view .rs-page-base .rs-html-page-article') as HTMLElement | null;
+      const article = rootRef.current?.querySelector('.rs-page-base .rs-html-page-article') as HTMLElement | null;
       const plain = (article?.textContent || article?.innerText || '').trim();
       if (!plain) return;
       const ok = await copyTextToClipboard(plain);
@@ -80,7 +99,7 @@ export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: 
   if (html === null) return <Spinner label="Converting document…" />;
 
   return (
-    <div className="docx-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div ref={rootRef} className="docx-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {mode === 'curl' ? (
         <div className="pdf-toolbar">
           <span className="pdf-title" title={name}>
@@ -219,6 +238,7 @@ export default function DocxView({ buffer, name }: { buffer: ArrayBuffer; name: 
           docName={name}
           toolMode={toolMode}
           setToolMode={setToolMode}
+          className="docx-body"
         />
       ) : (
         <div className="docx-scroll">

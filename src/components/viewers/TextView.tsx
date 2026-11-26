@@ -2,8 +2,11 @@ import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import hljs from 'highlight.js/lib/common';
 import { Wrap, ZoomIn, ZoomOut } from '../Icons';
 import { useSettings } from '../../stores/settings';
+import { useWorkspace } from '../../stores/workspace';
 import { HtmlBookCurlView, type HtmlBookCurlHandle } from './HtmlBookCurlView';
 import { paginatePlainText } from '../../services/htmlPaginator';
+
+const textPageMemory = new Map<string, number>();
 
 const EXT_TO_LANG: Record<string, { lang: string; label: string }> = {
   js: { lang: 'javascript', label: 'JavaScript' },
@@ -117,19 +120,40 @@ export default function TextView({
   text,
   ext,
   name,
+  path,
 }: {
   text: string;
   ext?: string;
   name?: string;
+  path?: string;
 }) {
   const mode = useSettings((s) => s.readingMode);
+  const providerId = useWorkspace((s) => s.provider?.id ?? 'local');
+  const memKey = `${providerId}::${path || name || 'text'}`;
   const [wrap, setWrap] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPageState] = useState(() => textPageMemory.get(memKey) ?? 1);
+  const [totalPages, setTotalPages] = useState(1);
   const [fit, setFit] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [toolMode, setToolMode] = useState<'select' | 'hand'>('select');
+  const rootRef = useRef<HTMLDivElement>(null);
   const curlNavRef = useRef<HtmlBookCurlHandle>(null);
+
+  const setPage = useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setPageState((prev) => {
+        const val = typeof next === 'function' ? next(prev) : next;
+        textPageMemory.set(memKey, val);
+        return val;
+      });
+    },
+    [memKey],
+  );
+
+  useEffect(() => {
+    setPageState(textPageMemory.get(memKey) ?? 1);
+  }, [memKey]);
 
   const big = text.length > 2_000_000;
   const info = ext ? EXT_TO_LANG[ext.toLowerCase()] : undefined;
@@ -152,36 +176,43 @@ export default function TextView({
     return null;
   }, [text, info?.lang, isCode, big]);
 
-  // Paginate plain text / code for 3D book reading
+  const useDomPagination = !big && text.length <= 500_000;
+
+  const codeRawHtml = useMemo(() => {
+    if (!useDomPagination) return undefined;
+    const inner =
+      highlightedHtml ??
+      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `<pre class="hljs" style="margin:0; white-space:pre-wrap; word-break:break-word;"><code>${inner}</code></pre>`;
+  }, [useDomPagination, highlightedHtml, text]);
+
+  // Fallback line-chunked pagination only for huge files (> 500 KB)
   const rawPages = useMemo(() => {
+    if (useDomPagination) return [];
     return paginatePlainText(text, { maxLinesPerPage: 32 });
-  }, [text]);
+  }, [text, useDomPagination]);
 
   const htmlPages = useMemo(() => {
+    if (useDomPagination) return undefined;
     return rawPages.map((pageText) => {
-      let pageHtml = '';
-      if (!big && info?.lang && hljs.getLanguage(info.lang)) {
-        try {
-          pageHtml = hljs.highlight(pageText, { language: info.lang, ignoreIllegals: true }).value;
-        } catch {
-          pageHtml = pageText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        }
-      } else {
-        pageHtml = pageText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      }
-      return `<pre class="hljs" style="margin:0; white-space:pre-wrap; word-break:break-all;">${pageHtml}</pre>`;
+      const pageHtml = pageText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<pre class="hljs" style="margin:0; white-space:pre-wrap; word-break:break-word;">${pageHtml}</pre>`;
     });
-  }, [rawPages, big, info]);
-
-  const totalPages = Math.max(1, htmlPages.length);
+  }, [rawPages, useDomPagination]);
 
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (!useDomPagination) {
+      setTotalPages(Math.max(1, rawPages.length));
+    }
+  }, [useDomPagination, rawPages.length]);
 
   const handleCopy = useCallback(async () => {
     if (mode === 'curl') {
-      const pageText = rawPages[Math.max(0, Math.min(rawPages.length - 1, page - 1))] || text;
+      const article = rootRef.current?.querySelector('.rs-page-base .rs-html-page-article') as HTMLElement | null;
+      const pageText =
+        (article?.textContent || article?.innerText || '').trim() ||
+        rawPages[Math.max(0, Math.min(rawPages.length - 1, page - 1))] ||
+        text;
       const ok = await copyTextToClipboard(pageText);
       setCopied(ok);
       if (ok) setTimeout(() => setCopied(false), 1600);
@@ -193,7 +224,7 @@ export default function TextView({
   }, [mode, page, rawPages, text]);
 
   return (
-    <div className="text-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div ref={rootRef} className="text-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {mode === 'curl' ? (
         <div className="pdf-toolbar">
           <span className="pdf-title" title={docName}>
@@ -333,9 +364,11 @@ export default function TextView({
       {mode === 'curl' ? (
         <HtmlBookCurlView
           ref={curlNavRef}
+          rawHtml={codeRawHtml}
           pages={htmlPages}
           page={page}
           setPage={setPage}
+          onTotalPagesChange={setTotalPages}
           zoom={zoom}
           fit={fit}
           docName={docName}
